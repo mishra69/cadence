@@ -30,6 +30,54 @@ const Charts = (() => {
   const fmtDay = d => new Date(`${d}T12:00:00Z`)
     .toLocaleDateString([], { day: 'numeric', month: 'short' });
 
+  // ── Scrub ─────────────────────────────────────────────────────────────────
+
+  /**
+   * The readout line both charts write into. Deliberately a sibling of the plot
+   * rather than a floating tooltip: on a phone the value would otherwise appear
+   * under the finger that is asking for it, and a tooltip that dodges the touch
+   * point is a lot of geometry for a chart 320px wide.
+   *
+   * aria-live so the value is announced as it changes, since the visual channel
+   * here is entirely positional.
+   */
+  function readout(host) {
+    const el = document.createElement('p');
+    el.className = 'chart-readout';
+    el.setAttribute('aria-live', 'polite');
+    host.append(el);
+    return el;
+  }
+
+  /**
+   * Pointer-drag scrubbing on one element.
+   *
+   * Pointer events rather than touch events, so the same handler serves a mouse
+   * without a second code path. Capture is taken on the target, which is what
+   * keeps the drag alive once the finger leaves the plot — otherwise sliding
+   * off the right edge silently ends the gesture mid-read.
+   *
+   * There is no release handler on purpose. The value stays on screen after the
+   * finger lifts, because lifting the finger is precisely when it becomes
+   * readable — clearing on pointerup would hide the number the gesture was for.
+   */
+  function scrub(target, onPoint) {
+    const handle = e => {
+      // A drag that started on the plot is a read, never a page scroll.
+      e.preventDefault();
+      onPoint(e.clientX, e.clientY);
+    };
+    target.addEventListener('pointerdown', e => {
+      // Capture can fail if the pointer is already gone; the scrub still works
+      // for as long as the finger stays over the element, so this is not fatal.
+      try { target.setPointerCapture(e.pointerId); } catch { /* not fatal */ }
+      handle(e);
+    });
+    // Ungated: a touch pointer only emits moves while it is down, so this is a
+    // drag on a phone and hover-to-read on a desktop, from one handler.
+    target.addEventListener('pointermove', handle);
+  }
+
   /** An empty state that says what it is waiting for, not just that it is empty. */
   function empty(host, message) {
     host.innerHTML = '';
@@ -68,6 +116,7 @@ const Charts = (() => {
 
     const svg = el('svg', {
       viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img',
+      class: 'chart-scrub',
       'aria-label': `Relapses per week, ${data[0].day} to ${data[data.length - 1].day}`,
     });
 
@@ -135,7 +184,59 @@ const Charts = (() => {
       svg.append(t);
     }
 
+    // ── Scrub overlay ───────────────────────────────────────────────────────
+    // Appended last so it paints over the series. Hidden until first touch:
+    // a rule parked at day zero looks like a marked date rather than a cursor.
+    const rule = el('line', {
+      y1: P.t, y2: P.t + ih, stroke: INK(), 'stroke-width': 1, opacity: 0, x1: 0, x2: 0,
+    });
+    const dot = k => el('circle', { r: 3.5, fill: k, stroke: SURFACE(), 'stroke-width': 1.5, opacity: 0 });
+    const dot7 = dot(SLIP());
+    const dot30 = dot(CLEAN());
+    svg.append(rule, dot30, dot7);
+
     host.append(svg);
+    const out = readout(host);
+
+    const fmt1 = v => (Math.round(v * 10) / 10).toFixed(1);
+    const place = (node, i, v) => {
+      if (v == null) return node.setAttribute('opacity', 0);
+      node.setAttribute('cx', x(i));
+      node.setAttribute('cy', y(v));
+      node.setAttribute('opacity', 1);
+    };
+
+    scrub(svg, clientX => {
+      const box = svg.getBoundingClientRect();
+      if (!box.width) return;
+      // Client px → viewBox units. The SVG scales to the container width, so the
+      // ratio is the only thing that carries across; reading offsetX would be
+      // wrong by exactly that scale factor.
+      const vx = ((clientX - box.left) / box.width) * W;
+      const t = data.length === 1 ? 0 : ((vx - P.l) / iw) * (data.length - 1);
+      const i = Math.max(0, Math.min(data.length - 1, Math.round(t)));
+      const d = data[i];
+
+      rule.setAttribute('x1', x(i));
+      rule.setAttribute('x2', x(i));
+      rule.setAttribute('opacity', 0.5);
+      place(dot7, i, d.per_week_7d);
+      place(dot30, i, d.per_week_30d);
+
+      // Nulls are gaps here too: a day whose window predates the record has no
+      // rate, and printing 0.0 would assert the thing the gaps exist to avoid.
+      const parts = [`<b>${fmtDay(d.day)}</b>`];
+      if (d.per_week_7d == null) {
+        parts.push('<span class="ro-dim">not enough history yet</span>');
+      } else {
+        parts.push(`${fmt1(d.per_week_7d)}<span class="ro-dim">/wk</span>`);
+        if (d.per_week_30d != null) {
+          parts.push(`<span class="ro-dim">30-day</span> ${fmt1(d.per_week_30d)}`);
+        }
+        if (!wellLogged(d)) parts.push('<span class="ro-dim">· thinly logged</span>');
+      }
+      out.innerHTML = parts.join(' ');
+    });
 
     const hasSmooth = data.some(d => d.per_week_30d != null);
     const thin = data.some(d => d.per_week_7d != null && !wellLogged(d));
@@ -163,6 +264,19 @@ const Charts = (() => {
    * not a day nothing happened, and colouring it as clean would present a gap in
    * the record as a run of good days.
    */
+  /**
+   * One line describing a day. Shared by the hover title and the scrub readout
+   * — two wordings for one cell is how they end up disagreeing about what
+   * "nothing logged" means.
+   */
+  function cellLabel(d) {
+    const what = d.count > 1 ? `${d.count} slips`
+      : d.state === 'relapse' ? 'slip'
+      : d.state === 'clean' ? 'logged, no slip'
+      : 'nothing logged';
+    return `${fmtDay(d.day)} — ${what}${d.confirmed ? ', day confirmed' : ''}`;
+  }
+
   function ribbon(host, days) {
     host.innerHTML = '';
     if (!days.length) return empty(host, 'Nothing logged yet.');
@@ -171,19 +285,38 @@ const Charts = (() => {
     grid.className = 'ribbon';
     for (const d of days) {
       const cell = document.createElement('span');
-      // More slips is darker — sequential within one hue, never a second colour,
-      // so the ramp reads as "more of the same thing" rather than a new state.
+      // More slips is lighter — sequential within one hue, never a second
+      // colour, so the ramp reads as "more of the same thing" rather than a new
+      // state. Lighter and not darker because the surface is dark; see the
+      // --viz-slip-2 note in styles.css.
       const heavy = d.count > 1 ? ` ribbon-multi${Math.min(d.count, 3)}` : '';
       cell.className = `ribbon-cell ribbon-${d.state}${heavy}`;
-      cell.title = d.state === 'pad' ? '' : `${fmtDay(d.day)} — ${
-        d.count > 1 ? `${d.count} slips`
-          : d.state === 'relapse' ? 'slip'
-          : d.state === 'clean' ? 'logged, no slip' : 'nothing logged'
-      }${d.confirmed ? ', day confirmed' : ''}`;
+      if (d.state !== 'pad') {
+        cell.title = cellLabel(d);
+        // The scrub hit-tests the DOM, so the day rides on the node rather than
+        // being recovered from grid arithmetic that would have to stay in sync
+        // with the CSS.
+        cell._day = d;
+      }
       if (d.confirmed) cell.classList.add('ribbon-confirmed');
       grid.append(cell);
     }
     host.append(grid);
+    const out = readout(host);
+
+    let focused = null;
+    scrub(grid, (clientX, clientY) => {
+      const hit = document.elementFromPoint(clientX, clientY);
+      // Off the grid, or on a pad cell: hold the last reading rather than
+      // blanking it. Dragging past the end of a week should not wipe the value
+      // you were reading on the way there.
+      const cell = hit && hit.classList?.contains('ribbon-cell') && hit._day ? hit : null;
+      if (!cell || cell === focused) return;
+      focused?.classList.remove('is-focus');
+      cell.classList.add('is-focus');
+      focused = cell;
+      out.textContent = cellLabel(cell._day);
+    });
 
     const legend = document.createElement('div');
     legend.className = 'chart-legend';

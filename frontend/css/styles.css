@@ -38,6 +38,17 @@
   --viz-clean: #5878d2;
   --viz-unknown: #4a5478;
 
+  /* The multi-slip ramp. Escalates UP in lightness, which on a dark surface is
+     the only direction that escalates at all: the previous ramp mixed toward
+     black, so two slips moved a cell TOWARD the #202638 background and three
+     landed near --viz-unknown, the "nothing logged" grey. More was drawn as
+     less. Sequential within the one hue, so the ramp still reads as "more of
+     the same thing" rather than a new state.
+     L* 58 → 75 → 88, against a surface at 16. The steps are deliberately large
+     — one slip to two is the comparison that has to survive a glance. */
+  --viz-slip-2: #edac4e;
+  --viz-slip-3: #ffd98d;
+
   /* The install prompt inherits these through its shadow boundary. */
   --pwa-accent: var(--accent);
   --pwa-surface: var(--surface);
@@ -528,6 +539,28 @@ button, .btn, [role="button"], input, select, textarea, a {
 }
 .chart-note { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; }
 
+/* Scrub readout. Reserves its line whether or not anything is under the finger,
+   so the chart never jumps up and down as you drag off the end of the data. */
+.chart-readout {
+  min-height: 17px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.chart-readout:empty::before {
+  content: 'Touch the chart to read a day.';
+  color: var(--text-faint);
+}
+.chart-readout .ro-dim { color: var(--text-dim); }
+
+/* pan-y, not none: this plot spans the full column width, so `none` would make
+   any gesture starting on it a dead spot for scrolling the page. The line scrub
+   only ever reads an x position, so handing vertical pans back to the browser
+   costs the interaction nothing. */
+.chart-scrub { touch-action: pan-y; display: block; }
+
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; }
 .range-nav { display: flex; gap: 2px; }
 .range-nav .link { font-size: 20px; line-height: 1; padding: 2px 10px; }
@@ -541,8 +574,18 @@ button, .btn, [role="button"], input, select, textarea, a {
   grid-template-rows: repeat(7, 1fr);
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
-  gap: 3px;
-  max-width: 320px;
+  /* Packed like a heatmap, not laid out like a set of buttons. The gap is a
+     separator between cells, not a margin around them, so it stays sub-pixel-ish
+     at 2px and the nine week-columns read as one block. Cells no longer need to
+     be their own touch targets — the scrub below hit-tests by position, so
+     nothing here is sized to a fingertip. */
+  gap: 2px;
+  max-width: 232px;
+  /* `none` rather than the line chart's pan-y: reading down a column is reading
+     down a week, so the vertical axis carries meaning here and cannot be given
+     back to the scroller. The cost is a non-scrolling patch, bounded by the
+     max-width above — the column to its right still scrolls the page. */
+  touch-action: none;
 }
 .ribbon-cell {
   aspect-ratio: 1;
@@ -553,17 +596,34 @@ button, .btn, [role="button"], input, select, textarea, a {
 }
 .ribbon-relapse { background: var(--viz-slip); }
 .ribbon-clean { background: var(--viz-clean); }
-/* Sequential within the one hue: more slips is darker, never a second colour. */
-.ribbon-multi2 { background: color-mix(in srgb, var(--viz-slip) 78%, #000); }
-.ribbon-multi3 { background: color-mix(in srgb, var(--viz-slip) 58%, #000); }
+/* Sequential within the one hue, escalating up in lightness. See the ramp note
+   on --viz-slip-2 for why it cannot escalate downward on this surface. */
+.ribbon-multi2 { background: var(--viz-slip-2); }
+.ribbon-multi3 { background: var(--viz-slip-3); }
+/* The cell under the finger. A ring rather than a colour change, so scrubbing
+   never restates the value it is being used to read.
+   Two classes deep on purpose: .ribbon-confirmed sets box-shadow too and is
+   declared later, so this needs the specificity to win rather than the order.
+   The ring is drawn outside the cell, hence the stacking context — without it
+   the next grid item paints over the half of the ring that sits in the gap. */
+.ribbon-cell.is-focus {
+  box-shadow: 0 0 0 2px var(--text);
+  position: relative;
+  z-index: 1;
+}
+.ribbon-cell.ribbon-confirmed.is-focus {
+  box-shadow: inset 0 0 0 1px var(--bg), 0 0 0 2px var(--text);
+}
 /* Days outside the window, or that have not happened. Not a state — absence of
    a cell, drawn so the grid stays rectangular. */
 .ribbon-pad { background: transparent; }
 
+/* Two steps, not the whole ramp: the legend already carries --viz-slip under
+   its own "slip" entry, so this shows only what "more than one" adds. */
 .swatch-multi {
   background: linear-gradient(90deg,
-    var(--viz-slip) 0 50%,
-    color-mix(in srgb, var(--viz-slip) 58%, #000) 50% 100%);
+    var(--viz-slip-2) 0 50%,
+    var(--viz-slip-3) 50% 100%);
 }
 /* A confirmed day is a property of the record, not a fourth state — so it rides
    as a ring rather than taking a colour of its own. */
