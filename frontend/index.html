@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+<!-- Everything visible from outside the app stays neutral (plan §0). The title
+     shows in the app switcher and in any share sheet; the manifest name shows
+     on the home screen. Neither says anything about what is being tracked. -->
+<title>Cadence</title>
+
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<!-- "default" keeps iOS from drawing the web view under the status bar. This
+     value is baked in at install time and cannot be changed for an existing
+     install, so the CSS below is written to be correct under either. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Cadence" />
+<meta name="theme-color" content="#202638" />
+
+<link rel="manifest" href="/manifest.json" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="icon" href="/icons/icon-192.png" type="image/png" />
+<link rel="stylesheet" href="/css/styles.css?v=20260905_1759" />
+</head>
+<body>
+
+<!--
+  The privacy veil. iOS snapshots the app for the app switcher, and that
+  thumbnail bypasses the lock entirely — so this has to be in the DOM from the
+  start and shown synchronously, not built on demand. It starts visible and is
+  removed once the app decides which screen to show, which also stops a flash of
+  the home screen on a cold start.
+-->
+<div id="veil" class="veil" aria-hidden="true">
+  <img src="/icons/icon-192.png" alt="" width="56" height="56" />
+</div>
+
+<main id="app" hidden>
+
+  <!-- ── Lock ─────────────────────────────────────────────────────────────
+       Face ID is prompted automatically on arrival (iOS 17.4 dropped the
+       user-gesture requirement). This button is the fallback for when that call
+       is refused or cancelled, so it has to be on screen before it is needed. -->
+  <section id="screen-lock" class="screen centered" hidden>
+    <img class="mark" src="/icons/icon-192.png" alt="" width="64" height="64" />
+    <h1 class="wordmark">Cadence</h1>
+    <button id="btn-unlock" class="btn btn-primary">Unlock</button>
+    <button id="btn-use-pin" class="btn btn-quiet" hidden>Use PIN instead</button>
+
+    <form id="pin-form" class="pin-form" hidden autocomplete="off">
+      <label class="field-label" for="pin-input">PIN</label>
+      <input id="pin-input" class="pin-input" type="password" inputmode="numeric"
+             pattern="[0-9]*" maxlength="12" autocomplete="off" />
+      <p id="pin-hint" class="hint"></p>
+      <button type="submit" class="btn btn-primary">Unlock</button>
+      <button type="button" id="btn-use-bio" class="btn btn-quiet" hidden>Use Face ID instead</button>
+    </form>
+
+    <p id="lock-error" class="error" hidden></p>
+
+    <!-- The escape hatch. A passkey can be deleted from the OS at any time, and
+         without this the app becomes unopenable with no recourse — the exact
+         failure §4.1 warned about, in the case it did not cover.
+         It gives nothing away: the lock is a gate, not encryption. Nothing is
+         decrypted by it, and anyone holding the phone could already bypass it
+         by reinstalling. Being reachable is worth more than being obscure. -->
+    <button class="link lock-escape" id="btn-lock-escape">Can't unlock?</button>
+
+    <div id="lock-reset" class="lock-reset" hidden>
+      <p class="hint">
+        This unlocks the app on this device only. It doesn't decrypt anything —
+        the lock is a screen gate, not encryption, and your data is on the server
+        either way. You'll be asked to set a new lock afterwards.
+      </p>
+      <button class="btn btn-quiet btn-small" id="btn-lock-reset-confirm">Reset the lock</button>
+    </div>
+
+    <p class="version-tag" data-version></p>
+  </section>
+
+  <!-- ── Sign in ─────────────────────────────────────────────────────────── -->
+  <section id="screen-signin" class="screen centered" hidden>
+    <img class="mark" src="/icons/icon-192.png" alt="" width="64" height="64" />
+    <h1 class="wordmark">Cadence</h1>
+    <div id="google-btn"></div>
+    <p id="signin-error" class="error" hidden></p>
+    <p id="signin-setup" class="hint" hidden>
+      Sign-in isn't configured yet. Set <code>GOOGLE_CLIENT_ID</code> in
+      <code>worker/wrangler.toml</code> and put the <code>TOKEN_SECRET</code> secret in place.
+    </p>
+    <p class="version-tag" data-version></p>
+  </section>
+
+  <!-- ── Home ─────────────────────────────────────────────────────────────
+       Two buttons and nothing else. Anything on this screen is something to
+       read while an urge is running, which is the one thing the app must never
+       offer (§0) — so the numbers live behind a deliberate tap, on Progress. -->
+  <section id="screen-home" class="screen has-tabs" hidden>
+    <div class="screen-head">
+      <div class="head-warn" data-lock-warn></div>
+      <button class="avatar avatar-btn" id="avatar-home"
+              aria-haspopup="menu" aria-expanded="false"
+              aria-label="Account and settings"></button>
+    </div>
+    <div class="hero-actions">
+      <button id="btn-log-urge" class="btn-tap btn-tap-urge">
+        <span class="btn-tap-label">Log an urge</span>
+      </button>
+      <button id="btn-log-relapse" class="btn-tap btn-tap-relapse">
+        <span class="btn-tap-label">Log a relapse</span>
+      </button>
+    </div>
+    <!-- A quiet link, deliberately not a third hero button. Here rather than
+         buried in a menu only because the daily notification is the intended
+         way in and hasn't been confirmed working on-device yet; once it has,
+         this can go. -->
+    <div class="home-secondary">
+      <button id="btn-open-sweep" class="btn-tap btn-tap-secondary">Review today</button>
+      <button id="btn-talk-now" class="btn-tap btn-tap-secondary">Talk it through</button>
+    </div>
+  </section>
+
+  <!-- ── Progress ─────────────────────────────────────────────────────────
+       Stats deliberately flat: the streak sits beside personal best and typical
+       attempt length so a single-digit number reads as ordinary, not as failure. -->
+  <section id="screen-progress" class="screen has-tabs" hidden>
+    <div class="screen-head">
+      <div class="head-warn" data-lock-warn></div>
+      <button class="avatar avatar-btn" id="avatar-progress"
+              aria-haspopup="menu" aria-expanded="false"
+              aria-label="Account and settings"></button>
+    </div>
+
+    <div class="stats-row" id="stats-row">
+      <div class="stat"><span class="stat-value" id="stat-current">—</span><span class="stat-label">current</span></div>
+      <div class="stat"><span class="stat-value" id="stat-best">—</span><span class="stat-label">best</span></div>
+      <div class="stat"><span class="stat-value" id="stat-typical">—</span><span class="stat-label">typical</span></div>
+    </div>
+    <p class="coverage" id="coverage"></p>
+
+    <section class="panel">
+      <h2 class="panel-title">Today</h2>
+      <ul id="today-list" class="timeline"></ul>
+      <p id="today-empty" class="empty" hidden>Nothing logged yet today.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title" id="range-label">Relapses per week</h2>
+        <div class="range-nav">
+          <button class="link" id="range-prev" aria-label="Earlier">‹</button>
+          <button class="link" id="range-next" aria-label="Later">›</button>
+        </div>
+      </div>
+      <div id="chart-rolling"></div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title" id="ribbon-title">Days</h2>
+      <div id="chart-ribbon"></div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title">Recently</h2>
+      <dl class="facts" id="facts"></dl>
+    </section>
+
+    <nav class="footer-nav">
+      <button class="link" id="btn-talk-reflect">Talk it through</button>
+      <button class="link" data-go="history">History</button>
+    </nav>
+    <p class="version-tag" data-version></p>
+  </section>
+
+  <!-- ── Log sheet ────────────────────────────────────────────────────────
+       Terminal by design: confirm, acknowledge, leave. No timer, no countdown,
+       no outcome prompt — see §0 and Appendix A. -->
+  <section id="screen-log" class="screen" hidden>
+    <header class="sheet-head">
+      <button class="link" id="btn-log-cancel">Cancel</button>
+      <h2 id="log-title" class="sheet-title">Log an urge</h2>
+      <span class="spacer"></span>
+    </header>
+
+    <!-- Only for a relapse remembered on return. Whole days, not a time
+         picker: the day is what the streak arithmetic needs and the hour is
+         not something anyone recalls accurately. -->
+    <div class="field" id="field-when" hidden>
+      <span class="field-label">When was it?</span>
+      <div class="chips" id="when-chips"></div>
+    </div>
+
+    <div class="field" id="field-intensity">
+      <span class="field-label">Intensity <span class="optional">optional</span></span>
+      <div class="intensity" id="intensity"></div>
+    </div>
+
+    <!-- Relapse only. The mirror of intensity, and the point of it is the
+         correlation with the gap it ended — which only works if it is asked
+         plainly and answered honestly, so the copy carries no judgement. -->
+    <div class="field" id="field-satisfaction" hidden>
+      <span class="field-label">Worth it? <span class="required" id="req-satisfaction">required</span></span>
+      <div class="intensity" id="satisfaction"></div>
+      <div class="scale-ends"><span>not at all</span><span>completely</span></div>
+    </div>
+
+    <!-- A separate group from the situational tags: a different question, and
+         keeping them apart is what makes "what was involved" answerable without
+         hunting through circumstances. Shown on urges too — an episode can go
+         down the path without finishing it. -->
+    <div class="field" id="field-mode" hidden>
+      <span class="field-label">What was involved <span class="required" id="req-mode">required</span></span>
+      <div class="chips" id="mode-chips"></div>
+    </div>
+
+    <div class="field">
+      <span class="field-label">What's going on <span class="optional">optional</span></span>
+      <div class="chips" id="context-chips"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="note">Note <span class="optional">optional</span></label>
+      <textarea id="note" rows="2" maxlength="2000" placeholder=""></textarea>
+    </div>
+
+    <p id="recall-note" class="hint" hidden></p>
+    <p id="log-missing" class="hint" hidden></p>
+    <button id="btn-log-save" class="btn btn-primary btn-hero">Save</button>
+  </section>
+
+  <!-- ── Welcome back ─────────────────────────────────────────────────────
+       Shown once after a stretch of silence. The streak is never reset by
+       inactivity — that was rejected in §3 and stays rejected — but it also
+       shouldn't keep asserting a number nothing backs up, so this asks rather
+       than assumes. Two answers, no scolding. -->
+  <section id="screen-return" class="screen centered" hidden>
+    <img class="mark" src="/icons/icon-192.png" alt="" width="56" height="56" />
+    <h2 class="return-title" id="return-title">Welcome back</h2>
+    <p class="hint" id="return-body"></p>
+
+    <div class="return-actions">
+      <button id="btn-return-clear" class="btn btn-primary">Nothing to add</button>
+      <button id="btn-return-relapse" class="btn btn-quiet">I relapsed</button>
+    </div>
+    <p class="hint" id="return-note"></p>
+  </section>
+
+  <!-- ── Share to a chatbot ───────────────────────────────────────────────
+       Hands a context summary to whatever assistant the share sheet offers,
+       rather than calling an API: a Claude or ChatGPT subscription does not
+       include API access, so this is the route that uses what is already paid
+       for. The preview is not decoration — this text leaves the app and lands
+       in another app's history, so it should be read before it goes. -->
+  <section id="screen-share" class="screen" hidden>
+    <header class="sheet-head">
+      <button class="link" id="btn-share-cancel">Cancel</button>
+      <h2 class="sheet-title" id="share-title">Talk it through</h2>
+      <span class="spacer"></span>
+    </header>
+
+    <div class="setting-row">
+      <label for="share-explicit">Name it explicitly</label>
+      <input type="checkbox" id="share-explicit" />
+    </div>
+    <p class="hint" id="share-explicit-hint"></p>
+
+    <div class="field">
+      <span class="field-label">What gets sent</span>
+      <pre class="share-preview" id="share-preview"></pre>
+    </div>
+
+    <button id="btn-share-go" class="btn btn-primary btn-hero">Share</button>
+    <button id="btn-share-copy" class="btn btn-quiet" style="width:100%;margin-top:10px">Copy instead</button>
+  </section>
+
+  <!-- ── Morning marker ───────────────────────────────────────────────────
+       One question, asked in the morning because that is the only time the
+       answer is reliable. Terminal: answer and the app is done with you. -->
+  <section id="screen-morning" class="screen centered" hidden>
+    <h2 class="return-title">Morning check</h2>
+    <p class="hint" id="morning-q">Morning erection today?</p>
+    <div class="chips" id="morning-now-chips"></div>
+    <button class="link" id="btn-morning-skip">Skip</button>
+  </section>
+
+  <!-- ── Nightly sweep ────────────────────────────────────────────────────
+       Three steps, no per-urge follow-ups. This is the only place the app asks
+       for effort, so it stays short or it stops happening. "Did I log
+       everything?" is a much softer prompt than "are you having an urge?",
+       which is exactly why it replaced the probes (Appendix A). -->
+  <section id="screen-sweep" class="screen" hidden>
+    <header class="sheet-head">
+      <button class="link" id="btn-sweep-skip">Not now</button>
+      <h2 class="sheet-title">Today</h2>
+      <span class="spacer"></span>
+    </header>
+
+    <ul id="sweep-list" class="timeline"></ul>
+    <p id="sweep-empty" class="empty" hidden>Nothing logged today.</p>
+
+    <div class="field">
+      <span class="field-label">Anything you didn't get to log?</span>
+      <!-- Coarse buckets, never a time picker: buckets match how recall works,
+           and a picker invites invented precision hours after the fact. -->
+      <div class="chips" id="sweep-buckets"></div>
+      <p class="hint" id="sweep-added"></p>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Morning wood <span class="optional">optional</span></span>
+      <div class="chips" id="morning-chips"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="sweep-note">
+        A line about the day <span class="optional">optional</span>
+      </label>
+      <textarea id="sweep-note" rows="2" maxlength="2000" placeholder=""></textarea>
+    </div>
+
+    <button id="btn-sweep-done" class="btn btn-primary btn-hero">Confirm the day</button>
+  </section>
+
+  <!-- Shown for about a second after a save, then the app gets out of the way. -->
+  <section id="screen-done" class="screen centered" hidden>
+    <p class="done-mark">✓</p>
+    <p class="done-text" id="done-text">Logged.</p>
+  </section>
+
+  <!-- ── History ─────────────────────────────────────────────────────────── -->
+  <section id="screen-history" class="screen" hidden>
+    <header class="sheet-head">
+      <button class="link" data-go="progress">Back</button>
+      <h2 class="sheet-title">History</h2>
+      <span class="spacer"></span>
+    </header>
+    <div id="history-body"></div>
+  </section>
+
+  <!-- ── Settings ────────────────────────────────────────────────────────── -->
+  <section id="screen-settings" class="screen" hidden>
+    <header class="sheet-head">
+      <button class="link" id="btn-settings-back">Back</button>
+      <h2 class="sheet-title">Settings</h2>
+      <span class="spacer"></span>
+    </header>
+
+    <section class="panel">
+      <h3 class="panel-title">Lock</h3>
+      <p class="hint">
+        A screen-lock, not encryption. It keeps the app closed to someone holding
+        the phone; it does not protect the data on the server. iOS stores the
+        Face ID gate as a passkey for this site — that's the same thing under
+        Apple's name for it.
+      </p>
+      <div class="setting-row">
+        <span id="bio-status">Face ID / Touch ID</span>
+        <button class="btn btn-small" id="btn-bio-setup">Set up</button>
+      </div>
+      <div class="setting-row">
+        <span id="pin-status">PIN</span>
+        <button class="btn btn-small" id="btn-pin-setup">Set up</button>
+      </div>
+      <!-- Inline rather than prompt(): a modal dialog blocks the page, and on
+           iOS a standalone PWA renders it as a jarring system sheet. -->
+      <form id="pin-setup-form" class="pin-setup" hidden autocomplete="off">
+        <input id="pin-new" class="pin-input" type="password" inputmode="numeric"
+               pattern="[0-9]*" maxlength="12" placeholder="PIN" autocomplete="new-password" />
+        <input id="pin-again" class="pin-input" type="password" inputmode="numeric"
+               pattern="[0-9]*" maxlength="12" placeholder="once more" autocomplete="new-password" />
+        <p id="pin-setup-hint" class="hint">4–12 digits.</p>
+        <div class="pin-setup-actions">
+          <button type="button" class="btn btn-quiet btn-small" id="btn-pin-cancel">Cancel</button>
+          <button type="submit" class="btn btn-small btn-primary">Save PIN</button>
+        </div>
+      </form>
+      <div class="setting-row">
+        <label for="idle-timeout">Re-lock after</label>
+        <select id="idle-timeout">
+          <option value="0">immediately</option>
+          <option value="60">1 minute</option>
+          <option value="300">5 minutes</option>
+          <option value="1800">30 minutes</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3 class="panel-title">Notifications</h3>
+      <p class="hint">
+        Nothing is scheduled yet — the daily check-in arrives in phase 2. This
+        registers the device so the plumbing can be tested. On iPhone it only
+        works from the home-screen install, never a browser tab.
+      </p>
+      <div class="setting-row">
+        <span id="push-status">Not enabled</span>
+        <button class="btn btn-small" id="btn-push">Enable</button>
+      </div>
+      <p id="push-detail" class="hint"></p>
+    </section>
+
+    <section class="panel">
+      <h3 class="panel-title">Sharing</h3>
+      <p class="hint">
+        Only used if you tick "name it explicitly" when sharing to a chatbot.
+        Stored on this device only — never sent to the server.
+      </p>
+      <div class="setting-row">
+        <label for="share-term">Call it</label>
+        <input type="text" id="share-term" placeholder="(leave blank to stay vague)"
+               autocomplete="off" style="width:auto;flex:1;margin-left:12px" />
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3 class="panel-title">Days</h3>
+      <div class="setting-row">
+        <label for="boundary-hour">A day starts at</label>
+        <select id="boundary-hour"></select>
+      </div>
+      <p class="hint">
+        Changing this re-files events near the boundary the next time they're
+        read. Existing rows keep their old cached day until
+        <code>scripts/rebuild-derived.ts</code> is run.
+      </p>
+      <div class="setting-row">
+        <label for="backfill-days">Backfill window</label>
+        <select id="backfill-days">
+          <option value="1">1 day</option>
+          <option value="3">3 days</option>
+          <option value="7">7 days</option>
+          <option value="14">14 days</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3 class="panel-title">Account</h3>
+      <div class="account-row">
+        <span class="avatar avatar-lg" id="avatar-settings"></span>
+        <div class="account-who">
+          <div id="account-name">—</div>
+          <div id="account-email" class="hint"></div>
+        </div>
+      </div>
+      <!-- Shown only when the session predates the profile being stored, or
+           storage was cleared. Re-authenticating here refreshes the account
+           without signing out — which would also wipe the lock. -->
+      <div id="account-refresh" hidden>
+        <p class="hint">Sign in again to show your account here. Your data and lock stay as they are.</p>
+        <div id="account-signin-btn"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3 class="panel-title">This device</h3>
+      <dl class="facts" id="device-facts"></dl>
+      <div class="setting-row">
+        <span>Queued while offline</span><span id="outbox-count">0</span>
+      </div>
+    </section>
+    <!-- Hidden test trigger: tapping the build stamp fires a one-off push, so
+         "notifications don't work" becomes a status code. -->
+    <p class="version-tag" data-version id="settings-version"></p>
+  </section>
+</main>
+
+<!-- Only ever visible on Home and Progress: it must not offer a way out of the
+     lock screen, or a distraction mid-log. -->
+<nav id="tabs" class="tabbar" hidden>
+  <button class="tab" data-tab="home" aria-current="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    Log
+  </button>
+  <button class="tab" data-tab="progress">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 16V9M12 16V5M17 16v-4"/></svg>
+    Progress
+  </button>
+</nav>
+
+<!-- Anchored to the avatar rather than the tab bar: these are occasional
+     destinations, and the bottom bar is for the two places you actually live. -->
+<div id="avatar-menu" class="avatar-menu" role="menu" hidden>
+  <div class="avatar-menu-head">
+    <span class="avatar" id="avatar-menu-pic"></span>
+    <div class="account-who">
+      <div id="menu-name">—</div>
+      <div id="menu-email" class="hint"></div>
+    </div>
+  </div>
+  <button class="avatar-menu-item" role="menuitem" id="menu-settings">Settings</button>
+  <button class="avatar-menu-item avatar-menu-item-quiet" role="menuitem" id="menu-signout">Sign out</button>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<!-- The page half of webpush-edge, copied unmodified from the package (refreshed
+     by deploy.sh's VENDOR_COPY). A browser has no bundler and cannot resolve a
+     bare specifier, so it is imported by path. Module scripts are deferred, so
+     this lands before DOMContentLoaded and app.js can rely on it. -->
+<script type="module">
+  import * as PushLib from '/js/vendor/webpush-edge/client.js';
+  window.Push = PushLib;
+</script>
+
+<script src="/js/config.js?v=20260905_1759"></script>
+<script src="/js/idb.js?v=20260905_1759"></script>
+<script src="/js/api.js?v=20260905_1759"></script>
+<script src="/js/charts.js?v=20260905_1759"></script>
+<script src="/js/lock.js?v=20260905_1759"></script>
+<script src="/js/version-check.js?v=20260905_1759"></script>
+<script src="/js/pwa-install.js?v=20260905_1759"></script>
+<script src="/js/app.js?v=20260905_1759"></script>
+</body>
+</html>

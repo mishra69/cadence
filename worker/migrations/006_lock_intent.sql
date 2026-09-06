@@ -1,0 +1,16 @@
+-- Whether the user wants a device lock at all.
+--
+--   NULL       never asked
+--   'wanted'   a lock was set up at some point
+--   'declined' explicitly turned down
+--
+-- Server-side on purpose. The lock itself has to live in localStorage — a
+-- passkey id and a PIN hash are device-bound — but that means a storage wipe
+-- takes the lock AND any local record that a lock ever existed, leaving the app
+-- unable to distinguish "lost it" from "never wanted one". The first deserves a
+-- loud warning and the second deserves silence, so the intent is kept where the
+-- wipe cannot reach it.
+--
+-- Note this stores only the intent, never the credential: the passkey and the
+-- PIN hash stay on the device.
+ALTER TABLE settings ADD COLUMN lock_intent TEXT;

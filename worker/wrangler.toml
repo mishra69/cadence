@@ -1,0 +1,49 @@
+name = "cadence"
+main = "index.js"
+compatibility_date = "2026-05-01"
+
+# One Worker serves the frontend and /api/*. Assets match first; anything else
+# falls through to the Worker. Same origin means no CORS anywhere.
+[assets]
+directory = "../frontend"
+binding = "ASSETS"
+
+# The safety-net tick (plan §5). It is not the normal send path — a Durable
+# Object alarm delivers — it exists to draw each day's target shortly after the
+# 04:00 local rollover, and to re-arm alarms lost to eviction, a deploy or clock
+# skew. Every 30 minutes is fine precision for a target drawn hours ahead.
+[triggers]
+crons = ["*/30 * * * *"]
+
+[[durable_objects.bindings]]
+name = "DAILY_PUSH"
+class_name = "DailyPushDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DailyPushDO"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cadence-db"
+database_id = "d6faf193-bbdb-46d2-92b8-012f39a03c49"
+
+[vars]
+# The client ID ships to browsers anyway, so it belongs here rather than in a
+# secret. The ID-token flow needs no client secret at all.
+GOOGLE_CLIENT_ID = "396096715078-bg1m9shvkcjfhf5nrpmjrchn537ml1tj.apps.googleusercontent.com"
+
+# Single-user app: only these addresses may sign in. Users are still keyed on
+# Google's immutable `sub`, never on the email — this is an allowlist, not an
+# identity. Comma-separated. Empty means "allow anyone", which you don't want.
+ALLOWED_EMAILS = "mishabhi@gmail.com"
+
+# Public VAPID key (base64url, 65-byte raw point) from `npx webpush-edge-vapid`.
+# Safe to commit — it is handed to every browser that subscribes. Rotating this
+# invalidates every existing subscription; devices must re-subscribe.
+VAPID_PUBLIC_KEY = "BJ669O7IQ-_k_Jf0zH_tDNjYqZEBIK5lpZgzOCU6oHPcDeOeSMJTSnvy_ryTCeKr0PT8CGmZ3Cm-z39d9UWdBFA"
+PUSH_CONTACT = "mailto:mishabhi@gmail.com"
+
+# Secrets (npx wrangler secret put NAME):
+#   TOKEN_SECRET       HMAC key for session tokens
+#   VAPID_PRIVATE_JWK  private half of the VAPID key

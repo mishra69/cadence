@@ -1,0 +1,31 @@
+{
+  "id": "/",
+  "name": "Cadence",
+  "short_name": "Cadence",
+  "description": "A quiet personal log.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#202638",
+  "theme_color": "#202638",
+  "shortcuts": [
+    {
+      "name": "New entry",
+      "short_name": "Entry",
+      "url": "/?action=urge",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Reset point",
+      "short_name": "Reset",
+      "url": "/?action=relapse",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

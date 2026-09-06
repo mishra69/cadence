@@ -1,0 +1,736 @@
+/* Cadence.
+ *
+ * Dark only, on purpose. This is a phone app used late at night more often than
+ * not, a dark surface is the calmer one, and committing to a single palette
+ * removes an entire axis of design and testing surface for an app with one user.
+ *
+ * Includes the pwa.css guidance from the skill (safe areas, touch-action,
+ * overscroll, dvh) rather than importing it — the two are intertwined enough
+ * here that a separate file would just be two places to look.
+ */
+
+:root {
+  --bg:        #202638;
+  --surface:   #272e43;
+  --surface-2: #2f374f;
+  --line:      #3a4360;
+  --text:      #e8ecf5;
+  --text-dim:  #9aa5c0;
+  --text-faint:#6c7695;
+  --accent:    #7c9cf5;
+  --accent-dim:#3d4c78;
+  --warm:      #d9a05b;   /* relapse affordances: distinct, never red */
+  --radius:    14px;
+  --topbar-height: 56px;
+  --head-height: 30px;
+  --home-secondary-height: 72px;
+
+  /* Data colours. Defined once here and read by charts.js, so the SVG and the
+     CSS-drawn marks can never drift apart.
+     The two categorical steps passed all six checks of the dataviz validator
+     against this surface — lightness band, chroma floor, CVD separation,
+     normal-vision floor, 3:1 contrast. The app's UI accent and warm both sit
+     ABOVE the dark lightness band, so they are deliberately not reused here.
+     --viz-unknown is de-emphasis, not a category: it is grey on purpose and is
+     held to visibility against the surface (2:1) rather than to the categorical
+     checks, which it correctly fails. */
+  --viz-slip: #bf7d34;
+  --viz-clean: #5878d2;
+  --viz-unknown: #4a5478;
+
+  /* The install prompt inherits these through its shadow boundary. */
+  --pwa-accent: var(--accent);
+  --pwa-surface: var(--surface);
+  --pwa-text: var(--text);
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  /* Rubber-band scrolling reads as broken in a standalone app, where there is
+     no browser chrome for the page to snap back against. */
+  overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Suppress the 300ms double-tap-to-zoom delay so rapid taps register as taps. */
+button, .btn, [role="button"], input, select, textarea, a {
+  touch-action: manipulation;
+}
+
+/* ── The privacy veil ──────────────────────────────────────────────────────
+   Shown synchronously when the app is backgrounded, so the app-switcher
+   snapshot catches this and not the contents. Deliberately identical to the
+   cold-start screen: a snapshot of it says nothing about whether the app was
+   even unlocked. */
+.veil {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.veil[hidden] { display: none; }
+.veil img { opacity: 0.85; border-radius: 12px; }
+
+/* ── Screens ─────────────────────────────────────────────────────────────── */
+
+.screen {
+  /* Any full-screen container must honour the safe area, or content slides
+     under the notch and the home indicator. Nothing below may reset this to 0. */
+  padding:
+    calc(env(safe-area-inset-top) + 20px)
+    calc(env(safe-area-inset-right) + 20px)
+    calc(env(safe-area-inset-bottom) + 28px)
+    calc(env(safe-area-inset-left) + 20px);
+  max-width: 560px;
+  margin: 0 auto;
+  min-height: 100dvh;
+}
+.screen[hidden] { display: none; }
+
+.centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.mark { border-radius: 14px; opacity: 0.9; }
+
+.wordmark {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  margin: 0 0 12px;
+  color: var(--text-dim);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.btn {
+  font: inherit;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 13px 22px;
+  cursor: pointer;
+  background: var(--surface-2);
+  color: var(--text);
+  transition: opacity 0.12s ease, transform 0.06s ease;
+}
+.btn:active { transform: scale(0.985); opacity: 0.85; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+.btn-primary { background: var(--accent); color: #16203a; font-weight: 600; }
+.btn-quiet   { background: transparent; color: var(--text-dim); border-color: var(--line); }
+.btn-small   { padding: 7px 14px; font-size: 14px; }
+
+.btn-hero {
+  width: 100%;
+  padding: 22px;
+  font-size: 19px;
+  border-radius: 18px;
+}
+
+.link {
+  font: inherit;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  padding: 8px 4px;
+  cursor: pointer;
+}
+
+/* ── Stats row ───────────────────────────────────────────────────────────── */
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 8px 0 0;
+}
+.stat {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px 8px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+/* Equal weight across all three. The streak is kept but is never the headline —
+   sitting it beside best and typical is what makes a small number read as
+   ordinary rather than as failure (§0). */
+.stat-value { font-size: 25px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 12px; color: var(--text-faint); letter-spacing: 0.05em; }
+
+.coverage {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 13px;
+  margin: 10px 0 0;
+}
+
+/* Unverified: the number is unchanged, only the confidence in it. Dimmed
+   rather than alarming — this is missing evidence, not a failure. */
+.stat.unverified .stat-value { opacity: 0.5; }
+.stat.unverified .stat-label::after { content: ' ?'; }
+.coverage .unverified-note { color: var(--warm); }
+
+/* ── Home: two targets, nothing else ─────────────────────────────────────── */
+
+.hero-actions {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 14px;
+  /* Fills whatever is left between the safe areas and the tab bar, so both
+     buttons are enormous on any phone without hardcoding a height. */
+  height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)
+               - var(--tabbar-height) - var(--head-height)
+               - var(--home-secondary-height) - 72px);
+}
+
+/* Two real targets rather than a row of small links: they are things you
+   deliberately go and do, and a 14px link is not a thumb target. */
+.home-secondary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  height: var(--home-secondary-height);
+  margin-top: 12px;
+}
+.btn-tap-secondary {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--text-dim);
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: 16px;
+  padding: 0 10px;
+  text-align: center;
+}
+
+/* Monospace and scrollable: this is the artifact that leaves the app, so it is
+   shown as-is rather than prettified into something else. */
+.share-preview {
+  margin: 0;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 46dvh;
+  overflow-y: auto;
+}
+
+.btn-tap {
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.07s ease, filter 0.12s ease;
+}
+.btn-tap:active { transform: scale(0.985); filter: brightness(1.12); }
+.btn-tap-label { font-size: 24px; font-weight: 600; letter-spacing: 0.01em; }
+
+.btn-tap-urge {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #16203a;
+}
+/* Distinct from the urge button so a half-awake tap can't confuse them, but
+   never red and never alarming — this is a thing to record, not a verdict. */
+.btn-tap-relapse {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--warm);
+}
+
+/* ── Account avatar ──────────────────────────────────────────────────────── */
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  /* The fallback: initials, sized to the circle. Shown whenever there is no
+     image — no picture claim, offline with nothing cached, or a URL that has
+     rotated out from under us. */
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  user-select: none;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar-lg { width: 46px; height: 46px; font-size: 17px; }
+
+/* A right-aligned strip that reserves its own height, so the avatar never
+   overlaps what follows — a huge button on Home, the stats row on Progress. */
+.screen-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--head-height);
+  margin-bottom: 12px;
+}
+
+/* Lives in the empty half of the header row rather than as a bottom banner —
+   there it sat over the two buttons you would actually reach for. */
+.head-warn { min-width: 0; }
+.head-warn:empty { display: none; }
+.lock-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--warm) 12%, transparent);
+  border: 1px solid var(--warm);
+  border-radius: 999px;
+  padding: 4px 6px 4px 12px;
+  font-size: 12px;
+  max-width: 100%;
+}
+.lock-chip-text {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--warm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lock-chip-x {
+  font: inherit;
+  background: none;
+  border: 0;
+  color: var(--warm);
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 0 6px;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* margin-left rather than justify-content on the parent: the warning chip beside
+   it is display:none when absent, and space-between puts a lone flex item at the
+   START — so the avatar jumped left exactly when no warning was showing. This
+   pins it right whatever its siblings do. */
+.avatar-btn { padding: 0; cursor: pointer; margin-left: auto; }
+
+.return-title { font-size: 20px; font-weight: 600; margin: 4px 0 0; }
+.return-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 300px; margin-top: 8px; }
+
+/* Anchored to the top-right avatar. Fixed rather than absolute so it does not
+   depend on the ancestor chain of whichever screen is showing. */
+.avatar-menu {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 54px);
+  right: calc(env(safe-area-inset-right) + 20px);
+  z-index: 600;
+  min-width: 210px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 6px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+}
+.avatar-menu[hidden] { display: none; }
+/* The centred column can be wider than the viewport's right edge on a large
+   screen, so the menu tracks the column rather than the window. */
+@media (min-width: 600px) {
+  .avatar-menu { right: max(calc(50vw - 280px + 20px), 20px); }
+}
+
+.avatar-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+
+.avatar-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 15px;
+  background: none;
+  border: 0;
+  border-radius: 9px;
+  color: var(--text);
+  padding: 11px 10px;
+  cursor: pointer;
+}
+.avatar-menu-item:active { background: var(--surface); }
+/* Set apart from the navigation items above it — it ends the session rather
+   than going somewhere. */
+.avatar-menu-item-quiet {
+  color: var(--text-faint);
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 9px 9px;
+  margin-top: 4px;
+}
+
+.account-row { display: flex; align-items: center; gap: 14px; }
+.account-who { min-width: 0; }
+.account-who .hint { margin: 2px 0 0; word-break: break-all; }
+
+/* ── Tab bar ─────────────────────────────────────────────────────────────── */
+
+:root { --tabbar-height: 58px; }
+
+.tabbar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 400;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+  /* Absorb the home-indicator inset itself so the background fills behind it
+     rather than leaving a strip of page showing through. */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar[hidden] { display: none; }
+
+.tab {
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  background: none;
+  border: 0;
+  color: var(--text-faint);
+  cursor: pointer;
+  height: var(--tabbar-height);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+.tab svg {
+  width: 22px; height: 22px;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.tab[aria-current="true"] { color: var(--accent); }
+
+/* Screens that sit above the tab bar need room for it. */
+.has-tabs { padding-bottom: calc(env(safe-area-inset-bottom) + var(--tabbar-height) + 20px); }
+
+/* ── Panels ──────────────────────────────────────────────────────────────── */
+
+.panel { margin-top: 26px; }
+.panel-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 11px 14px;
+  background: var(--surface);
+  border-radius: 11px;
+  margin-bottom: 7px;
+}
+.ev-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  font-size: 13px;
+  min-width: 52px;
+}
+.ev-body { flex: 1; min-width: 0; }
+.ev-kind { font-size: 15px; }
+.ev-kind.relapse { color: var(--warm); }
+.ev-meta { font-size: 13px; color: var(--text-dim); margin-top: 2px; word-break: break-word; }
+.ev-recalled { font-size: 11px; color: var(--text-faint); }
+.ev-del {
+  font: inherit; background: none; border: 0; color: var(--text-faint);
+  cursor: pointer; padding: 4px 6px; font-size: 15px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+/* Armed: unmistakably a different control from the × it replaces, so the
+   second tap is a decision rather than a repeat of the first. */
+.ev-del.armed {
+  font-size: 13px;
+  padding: 5px 11px;
+  color: var(--warm);
+  border: 1px solid var(--warm);
+}
+
+.empty { color: var(--text-faint); font-size: 14px; margin: 4px 0; }
+
+.facts { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; }
+.facts dt { color: var(--text-dim); font-size: 15px; }
+.facts dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.facts .gated { color: var(--text-faint); font-size: 13px; }
+
+/* ── Charts ──────────────────────────────────────────────────────────────
+   Data colours live in charts.js, not here: they are validated against the
+   surface as a set, and splitting them across two files invites one half being
+   changed without the other being re-checked. */
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.chart-legend i {
+  display: inline-block;
+  width: 9px; height: 9px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: baseline;
+}
+.chart-note { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; }
+
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; }
+.range-nav { display: flex; gap: 2px; }
+.range-nav .link { font-size: 20px; line-height: 1; padding: 2px 10px; }
+.range-nav .link:disabled { opacity: 0.3; cursor: default; }
+
+/* Seven ROWS, one per weekday, filling down each column so a column is a week.
+   Full grid by construction, weekday alignment for free, and it stays compact —
+   seven columns across the page made every cell the size of a button. */
+.ribbon {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 3px;
+  max-width: 320px;
+}
+.ribbon-cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  /* Visible as a cell, not as a gap — a run of missing days is the thing this
+     chart most needs to show, and at 1.5:1 it read as absence of a cell. */
+  background: var(--viz-unknown);
+}
+.ribbon-relapse { background: var(--viz-slip); }
+.ribbon-clean { background: var(--viz-clean); }
+/* Sequential within the one hue: more slips is darker, never a second colour. */
+.ribbon-multi2 { background: color-mix(in srgb, var(--viz-slip) 78%, #000); }
+.ribbon-multi3 { background: color-mix(in srgb, var(--viz-slip) 58%, #000); }
+/* Days outside the window, or that have not happened. Not a state — absence of
+   a cell, drawn so the grid stays rectangular. */
+.ribbon-pad { background: transparent; }
+
+.swatch-multi {
+  background: linear-gradient(90deg,
+    var(--viz-slip) 0 50%,
+    color-mix(in srgb, var(--viz-slip) 58%, #000) 50% 100%);
+}
+/* A confirmed day is a property of the record, not a fourth state — so it rides
+   as a ring rather than taking a colour of its own. */
+.ribbon-confirmed { box-shadow: inset 0 0 0 1px var(--text); }
+
+/* ── Sheet (log / history / settings) ────────────────────────────────────── */
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.sheet-title { font-size: 17px; font-weight: 600; margin: 0; }
+/* Matched widths keep the title optically centred. nowrap because the label is
+   sometimes two words ("Not now") and wrapping it breaks the header height. */
+.spacer { width: 76px; flex-shrink: 0; }
+.sheet-head .link { width: 76px; text-align: left; white-space: nowrap; flex-shrink: 0; }
+
+.field { margin-bottom: 24px; }
+.field-label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 9px;
+}
+.optional { color: var(--text-faint); font-size: 12px; }
+.required { color: var(--warm); font-size: 12px; }
+.required.satisfied { color: var(--text-faint); }
+
+.intensity { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
+.intensity button {
+  font: inherit;
+  padding: 15px 0;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.intensity button[aria-pressed="true"] {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* Anchors a 0–5 row so the numbers mean something without a legend. */
+.scale-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips button {
+  font: inherit;
+  font-size: 15px;
+  padding: 9px 15px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.chips button[aria-pressed="true"] {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+textarea, .pin-input, select {
+  font: inherit;
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 12px;
+  resize: none;
+}
+select { width: auto; padding: 8px 10px; }
+textarea:focus, .pin-input:focus, select:focus {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: 1px;
+}
+
+.lock-escape { font-size: 13px; color: var(--text-faint); margin-top: 4px; }
+.lock-reset {
+  max-width: 280px;
+  text-align: center;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.lock-reset[hidden] { display: none; }
+
+.pin-form { width: 100%; max-width: 260px; display: flex; flex-direction: column; gap: 10px; }
+.pin-input { text-align: center; letter-spacing: 0.5em; font-size: 22px; }
+.pin-input::placeholder { letter-spacing: normal; font-size: 15px; }
+
+.pin-setup { display: flex; flex-direction: column; gap: 10px; padding: 6px 0 14px; }
+.pin-setup[hidden] { display: none; }
+.pin-setup-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ── Done ────────────────────────────────────────────────────────────────── */
+
+.done-mark { font-size: 44px; color: var(--accent); margin: 0; }
+/* Matter-of-fact and brief. Nothing here invites staying. */
+.done-text { color: var(--text-dim); margin: 0; }
+
+/* ── Settings ────────────────────────────────────────────────────────────── */
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+.setting-row:last-of-type { border-bottom: 0; }
+
+/* ── Misc ────────────────────────────────────────────────────────────────── */
+
+.hint { color: var(--text-faint); font-size: 13px; margin: 8px 0; }
+.hint code { font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+.error { color: var(--warm); font-size: 14px; }
+.error[hidden] { display: none; }
+
+.footer-nav {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-top: 34px;
+}
+
+.version-tag {
+  cursor: pointer;   /* hidden test trigger — see app.js sendTestPush */
+  margin-top: 16px;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 24px);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 11px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  z-index: 500;
+  max-width: 90vw;
+}
+.toast[hidden] { display: none; }
+
+.day-head {
+  font-size: 13px;
+  color: var(--text-faint);
+  margin: 22px 0 8px;
+  letter-spacing: 0.04em;
+}

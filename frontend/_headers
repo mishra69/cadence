@@ -1,0 +1,18 @@
+# Never let the service worker or the shell go stale in the HTTP cache — a
+# cached sw.js pins users to an old build with no way to recover.
+/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /
+
+/index.html
+  Cache-Control: no-cache
+
+/
+  Cache-Control: no-cache
+
+/manifest.json
+  Cache-Control: no-cache
+
+# Icons are stable; the filename changes when the art does.
+/icons/*
+  Cache-Control: public, max-age=604800

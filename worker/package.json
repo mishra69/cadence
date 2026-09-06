@@ -1,0 +1,14 @@
+{
+  "name": "cadence-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "schema:local": "wrangler d1 execute cadence-db --local --file=schema.sql",
+    "schema:remote": "wrangler d1 execute cadence-db --remote --file=schema.sql"
+  },
+  "dependencies": {
+    "webpush-edge": "github:mishra69/webpush-edge"
+  }
+}

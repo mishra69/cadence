@@ -1,0 +1,12 @@
+{
+  "name": "cadence",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --disable-warning=ExperimentalWarning test/*.test.js",
+    "icons": "python3 scripts/make-icons.py",
+    "dev": "npm --prefix worker run dev",
+    "deploy": "./deploy.sh",
+    "sync-assets": "../.claude/skills/pwa-cloudflare/sync-assets.sh"
+  }
+}
