@@ -191,6 +191,21 @@
       <div class="chips" id="when-chips"></div>
     </div>
 
+    <!-- Logging a relapse hours after it happened is the normal case, not the
+         exception — one that puts you to sleep gets logged the next morning.
+         Defaults to now, so it costs nothing when you do log immediately. -->
+    <div class="field" id="field-hour" hidden>
+      <span class="field-label">When did it happen?</span>
+      <div class="hour-pick">
+        <button type="button" class="hour-step" id="hour-back" aria-label="An hour earlier">−</button>
+        <span class="hour-read">
+          <b id="hour-label">now</b>
+          <span class="hour-sub" id="hour-sub"></span>
+        </span>
+        <button type="button" class="hour-step" id="hour-fwd" aria-label="An hour later">+</button>
+      </div>
+    </div>
+
     <div class="field" id="field-intensity">
       <span class="field-label">Intensity <span class="optional">optional</span></span>
       <div class="intensity" id="intensity"></div>

@@ -441,6 +441,10 @@ const App = (() => {
   // where you came from rather than always dropping you on Progress.
   let settingsReturnTo = 'home';
 
+  // Mirrors worker/lib/settings.js DEFAULT_SETTINGS. Refreshed by loadSettings()
+  // and by the Settings screen; the defaults stand until then.
+  let appSettings = { day_boundary_hour: 4, backfill_window_days: 3 };
+
   function closeAvatarMenu() {
     const menu = $('avatar-menu');
     if (!menu || menu.hidden) return;
@@ -866,6 +870,9 @@ const App = (() => {
       recalled: !!opts.recalled,
       // Set only on the return flow; null means "now".
       ts_utc: null,
+      // Whole hours back from save time. 0 is "now", which is the default, so
+      // logging in the moment is still a single tap.
+      hoursAgo: 0,
       // Clearing the outstanding gap is deferred to a successful save, so
       // abandoning this sheet leaves the gap outstanding rather than silently
       // vouching for it.
@@ -886,12 +893,77 @@ const App = (() => {
     $('recall-note').hidden = true;
 
     renderWhen(opts.window);
+    // Never both: the return flow already asks which *day*, at whole-day
+    // resolution, and offering an hour on top would imply a precision that
+    // flow's whole design says the memory does not have.
+    $('field-hour').hidden = draft.kind !== 'relapse' || draft.recalled;
+    if (!$('field-hour').hidden) renderHour();
     renderScale('intensity');
     renderScale('satisfaction');
     renderChips();
     renderModeChips();
     renderRequired();
     show('log');
+  }
+
+  /**
+   * The logical day a wall-clock instant belongs to, as a local Date.
+   *
+   * Shifts the **wall clock**, not the instant — `ts - 4h` is a day out for an
+   * 04:00–05:00 event on the spring-forward DST date. Same correction PLAN.md §3
+   * records for the server's derive(); the two must agree or this control would
+   * promise a day the server then disagrees with.
+   */
+  function logicalDateOf(ts, boundaryHour) {
+    const d = new Date(ts);
+    if (d.getHours() < boundaryHour) d.setDate(d.getDate() - 1);
+    d.setHours(12, 0, 0, 0);
+    return d;
+  }
+
+  /**
+   * Hour-granularity "when did it happen", for a relapse logged after the fact.
+   *
+   * Hours rather than a clock picker because an hour is the honest resolution of
+   * the memory, and because the two things downstream care about are the bucket
+   * (`local_hour`) and the logical day — neither of which minutes affect.
+   *
+   * These stay `recalled = 0`. In this codebase `recalled` means reconstructed
+   * days later and systematically fuzzier, and phase 4 is meant to hold those
+   * apart; a time you actually remember from this morning is not that.
+   */
+  function renderHour() {
+    const boundary = appSettings.day_boundary_hour;
+    const maxBack = appSettings.backfill_window_days * 24;
+    const now = Date.now();
+    const ts = now - draft.hoursAgo * 3_600_000;
+
+    $('hour-back').disabled = draft.hoursAgo >= maxBack;
+    $('hour-fwd').disabled = draft.hoursAgo <= 0;
+
+    $('hour-label').textContent = new Date(ts)
+      .toLocaleTimeString([], { hour: 'numeric', minute: draft.hoursAgo ? undefined : '2-digit' });
+
+    const sub = $('hour-sub');
+    const ago = draft.hoursAgo === 0 ? 'now' : plural(draft.hoursAgo, 'hour') + ' ago';
+    const today = logicalDateOf(now, boundary);
+    const then = logicalDateOf(ts, boundary);
+    if (then.getTime() === today.getTime()) {
+      sub.textContent = ago;
+    } else {
+      // The reason this control exists: before 04:00 belongs to the previous
+      // logical day, so a 1am relapse logged at 9am would otherwise be filed a
+      // whole day late — moving the ribbon cell, the streak start, and both
+      // attempt lengths around it.
+      const day = then.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+      sub.innerHTML = `${ago} · <span class="hour-flip">counts as ${day}</span>`;
+    }
+  }
+
+  function stepHour(by) {
+    const maxBack = appSettings.backfill_window_days * 24;
+    draft.hoursAgo = Math.max(0, Math.min(maxBack, draft.hoursAgo + by));
+    renderHour();
   }
 
   /**
@@ -1039,6 +1111,9 @@ const App = (() => {
     const payload = { kind: draft.kind };
     if (draft.recalled) payload.recalled = true;
     if (draft.ts_utc != null) payload.ts_utc = draft.ts_utc;
+    // Resolved against save time, not sheet-open time, so "2 hours ago" means
+    // two hours before the tap that recorded it however long the sheet sat open.
+    else if (draft.hoursAgo > 0) payload.ts_utc = Date.now() - draft.hoursAgo * 3_600_000;
     // `!= null` rather than a truthiness check: 0 is a real answer on both
     // scales, and the most interesting one on satisfaction.
     if (draft.kind === 'urge' && draft.intensity != null) payload.intensity = draft.intensity;
@@ -1142,6 +1217,7 @@ const App = (() => {
 
     try {
       const s = await API.settings();
+      appSettings = { ...appSettings, ...s };
       boundary.value = String(s.day_boundary_hour);
       $('backfill-days').value = String(s.backfill_window_days);
     } catch { /* offline: the controls keep whatever they last showed */ }
@@ -1567,13 +1643,18 @@ const App = (() => {
     };
 
     $('boundary-hour').onchange = async e => {
+      appSettings.day_boundary_hour = Number(e.target.value);
       await API.settings({ day_boundary_hour: Number(e.target.value) });
       toast('Applies to events logged from now on. Run rebuild-derived for older ones.');
       stats = null;
     };
     $('backfill-days').onchange = async e => {
+      appSettings.backfill_window_days = Number(e.target.value);
       await API.settings({ backfill_window_days: Number(e.target.value) });
     };
+    // Repeat-friendly: stepping back six hours is six taps, not a long-press.
+    $('hour-back').onclick = () => stepHour(1);
+    $('hour-fwd').onclick = () => stepHour(-1);
     $('menu-signout').onclick = () => signOut();
   }
 
@@ -1615,9 +1696,29 @@ const App = (() => {
     else await afterUnlock();
     clearTimeout(watchdog);
 
-    // Config is a refinement, not a prerequisite: `config` already holds the
-    // fallback vocabulary, so a slow or failed fetch costs nothing visible.
+    // Both are refinements, not prerequisites: `config` already holds the
+    // fallback vocabulary and `appSettings` the default day boundary, so a slow
+    // or failed fetch costs nothing visible.
     loadConfig();
+    loadSettings();
+  }
+
+  let settingsPromise = null;
+
+  /**
+   * Fetch settings at most once, same shape as loadConfig: a refinement, not a
+   * prerequisite. The defaults below mirror worker/lib/settings.js, so the hour
+   * stepper behaves correctly on a cold, offline launch — it would otherwise
+   * have to guess the day boundary, and guessing it wrong is exactly the error
+   * the stepper exists to prevent.
+   */
+  function loadSettings() {
+    if (!settingsPromise) {
+      settingsPromise = API.settings()
+        .then(s => { appSettings = { ...appSettings, ...s }; return appSettings; })
+        .catch(() => appSettings);
+    }
+    return settingsPromise;
   }
 
   let configPromise = null;

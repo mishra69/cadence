@@ -723,6 +723,47 @@ button, .btn, [role="button"], input, select, textarea, a {
   color: var(--text);
 }
 
+/* Hour stepper. Steppers rather than a native time input: the granularity here
+   is an hour, and a picker that offers minutes invites a precision the memory
+   behind it does not have. Both buttons are full touch targets because this is
+   used one-handed, late, by someone who has just had a bad night. */
+.hour-pick {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.hour-step {
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  width: 52px;
+  min-height: 52px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.hour-step:disabled { opacity: 0.35; cursor: default; }
+.hour-read {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.hour-read b { font-size: 17px; }
+.hour-sub { font-size: 12px; color: var(--text-dim); text-align: center; }
+/* The day only appears when it differs from the day the app would have
+   assumed, which is the whole point of the control — see the 04:00 boundary. */
+.hour-sub .hour-flip { color: var(--warm); }
+
 textarea, .pin-input, select {
   font: inherit;
   width: 100%;
