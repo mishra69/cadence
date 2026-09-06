@@ -44,10 +44,15 @@
      landed near --viz-unknown, the "nothing logged" grey. More was drawn as
      less. Sequential within the one hue, so the ramp still reads as "more of
      the same thing" rather than a new state.
-     L* 58 → 75 → 88, against a surface at 16. The steps are deliberately large
-     — one slip to two is the comparison that has to survive a glance. */
-  --viz-slip-2: #edac4e;
-  --viz-slip-3: #ffd98d;
+     L* 58 → 83 → 96, against a surface at 16. One slip to two is the comparison
+     that has to survive a glance, and at L* 75 it did not — a 17-point step
+     read as a shade of the same colour when the two sat side by side. It is now
+     25 points, and carries a hue rotation from orange toward gold with it, so
+     lightness is not the only channel doing the work. Still one sequential ramp
+     — rotating hue *along* a ramp is what every perceptual scale does; what the
+     plan rules out is a second categorical colour, which this is not. */
+  --viz-slip-2: #f7c948;
+  --viz-slip-3: #fff3c4;
 
   /* The install prompt inherits these through its shadow boundary. */
   --pwa-accent: var(--accent);

@@ -119,11 +119,24 @@ test('every column is the same weekday', () => {
   }
 });
 
-test('padding days are marked so they are drawn as absent, not as data', () => {
+test('only days that have not happened yet are drawn as absent', () => {
   const r = dayRibbon({ events: [], tz: IST, settings: S, now: NOW, days: 30 });
-  const pads = r.filter(d => d.outside);
-  assert.ok(pads.length > 0, 'a 30-day window rarely lands on week boundaries');
-  assert.ok(pads.every(d => d.state === 'pad'));
+  const today = '2026-09-03';   // NOW's logical day
+  const pads = r.filter(d => d.state === 'pad');
+  assert.ok(pads.length > 0, 'the test clock sits mid-week, so the week has a tail');
+  assert.ok(pads.every(d => d.day > today), 'a past day is never absent');
+  // The days the week alignment pulls in are real days, and drawing them as
+  // absent is what left the grid ragged down its left edge.
+  assert.ok(r.filter(d => d.outside && d.day <= today).every(d => d.state !== 'pad'));
+});
+
+test('the grid has no holes before today', () => {
+  const r = dayRibbon({ events: [], tz: IST, settings: S, now: NOW, days: 63 });
+  const upToToday = r.filter(d => !d.future);
+  // Every cell from the grid's first day through today carries a real state,
+  // so every column left of the current week is full top to bottom.
+  assert.ok(upToToday.every(d => ['unknown', 'clean', 'relapse'].includes(d.state)));
+  assert.equal(upToToday[0].day, r[0].day, 'the grid starts on a real day, not a pad');
 });
 
 test('two slips in a day are not drawn the same as one', () => {

@@ -128,11 +128,20 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
 
   return dayRange(gridStart, gridEnd).map(day => {
     const rec = byDay.get(day);
-    const outside = day < start || day > last || day > todayDay;
+    // Outside the *requested* window, which is not the same as absent. The days
+    // the week alignment pulls in are ordinary past days with the same events
+    // behind them as any other — the route loads the whole history, not the
+    // window — so they are drawn as data.
+    const outside = day < start || day > last;
+    // A cell is absent only if the day has not happened yet. Treating the
+    // alignment padding as absent is what left the first column empty above the
+    // bottom row, so the block read as a staircase rather than a rectangle.
+    const future = day > todayDay;
     return {
       day,
       outside,
-      state: outside ? 'pad' : !rec ? 'unknown' : rec.count > 0 ? 'relapse' : 'clean',
+      future,
+      state: future ? 'pad' : !rec ? 'unknown' : rec.count > 0 ? 'relapse' : 'clean',
       count: rec?.count || 0,
       confirmed: !!rec?.confirmed,
       events: rec?.events || 0,

@@ -145,8 +145,13 @@ const App = (() => {
     Charts.rolling($('chart-rolling'), s.rolling);
     Charts.ribbon($('chart-ribbon'), s.ribbon);
 
-    const from = s.rolling[0]?.day;
-    const to = s.rolling[s.rolling.length - 1]?.day;
+    // From the ribbon, not the rolling series: the title sits above the ribbon
+    // and the week alignment makes it the wider of the two. Pads excluded —
+    // they are days that have not happened, and dating the panel to one would
+    // put a future date in the header.
+    const drawn = s.ribbon.filter(d => d.state !== 'pad');
+    const from = drawn[0]?.day;
+    const to = drawn[drawn.length - 1]?.day;
     const fmt = d => new Date(`${d}T12:00:00Z`).toLocaleDateString([], { day: 'numeric', month: 'short' });
     $('ribbon-title').textContent = from ? `${fmt(from)} – ${fmt(to)}` : 'Days';
 
