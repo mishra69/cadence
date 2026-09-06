@@ -539,21 +539,39 @@ button, .btn, [role="button"], input, select, textarea, a {
 }
 .chart-note { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; }
 
-/* Scrub readout. Reserves its line whether or not anything is under the finger,
-   so the chart never jumps up and down as you drag off the end of the data. */
-.chart-readout {
-  min-height: 17px;
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 17px;
+/* The scrub tooltip rides above the plot, so the padding is headroom for it
+   rather than spacing — without it the pill is clipped by the panel. */
+.chart-plot { position: relative; padding-top: 34px; }
+
+/* Pinned to the top of the plot and tracking x only. Following the dot's y as
+   well would mean the pill jumps vertically as the series does, which on a
+   noisy line is most of the way to unreadable — and at this width it would sit
+   on top of the data it is describing. */
+.chart-tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 4px 9px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  line-height: 1.3;
+  white-space: nowrap;
   color: var(--text);
   font-variant-numeric: tabular-nums;
+  /* The pill sits over the plot; it must never eat the drag that moves it. */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
-.chart-readout:empty::before {
-  content: 'Touch the chart to read a day.';
-  color: var(--text-faint);
-}
-.chart-readout .ro-dim { color: var(--text-dim); }
+.chart-tip.is-on { opacity: 1; }
+.chart-tip .ro-dim { color: var(--text-dim); }
+
+/* Discoverability only: a scrub has no affordance of its own. Removed for good
+   on first touch rather than toggled, since the question it answers is asked
+   exactly once. */
+.chart-hint { font-size: 11px; color: var(--text-faint); margin: 6px 0 0; }
 
 /* pan-y, not none: this plot spans the full column width, so `none` would make
    any gesture starting on it a dead spot for scrolling the page. The line scrub
@@ -580,7 +598,10 @@ button, .btn, [role="button"], input, select, textarea, a {
      be their own touch targets — the scrub below hit-tests by position, so
      nothing here is sized to a fingertip. */
   gap: 2px;
-  max-width: 232px;
+  /* Fills the column. The square count per row is fixed by the data — one
+     column per week — so the cells stretch to the available width rather than
+     the block stopping short of it. */
+  width: 100%;
   /* `none` rather than the line chart's pan-y: reading down a column is reading
      down a week, so the vertical axis carries meaning here and cannot be given
      back to the scroller. The cost is a non-scrolling patch, bounded by the

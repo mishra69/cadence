@@ -33,20 +33,48 @@ const Charts = (() => {
   // ── Scrub ─────────────────────────────────────────────────────────────────
 
   /**
-   * The readout line both charts write into. Deliberately a sibling of the plot
-   * rather than a floating tooltip: on a phone the value would otherwise appear
-   * under the finger that is asking for it, and a tooltip that dodges the touch
-   * point is a lot of geometry for a chart 320px wide.
+   * A plot wrapper plus the tooltip that rides over it.
    *
-   * aria-live so the value is announced as it changes, since the visual channel
-   * here is entirely positional.
+   * The pill tracks x and stays pinned to the top. Anchoring it to the point's
+   * y instead would put it on top of the series at exactly the moment the
+   * series is being read, and make it leap around as the line does.
+   *
+   * Clamped to the wrapper on both edges: at the ends of the range an
+   * x-centred pill hangs off the panel, and on a phone that is a horizontal
+   * scrollbar rather than a tooltip.
+   *
+   * aria-live because the visual channel here is entirely positional.
    */
-  function readout(host) {
-    const el = document.createElement('p');
-    el.className = 'chart-readout';
-    el.setAttribute('aria-live', 'polite');
-    host.append(el);
-    return el;
+  function plot(host) {
+    const wrap = document.createElement('div');
+    wrap.className = 'chart-plot';
+    const tip = document.createElement('div');
+    tip.className = 'chart-tip';
+    tip.setAttribute('aria-live', 'polite');
+    wrap.append(tip);
+    host.append(wrap);
+
+    let hintEl = null;
+    return {
+      wrap,
+      /** @param {string} html  @param {number} cx  centre, in px within wrap */
+      show(html, cx) {
+        tip.innerHTML = html;
+        tip.classList.add('is-on');
+        // Measured after the content is in, or the clamp uses the old width.
+        const half = tip.offsetWidth / 2;
+        const max = wrap.clientWidth - tip.offsetWidth;
+        tip.style.left = `${Math.max(0, Math.min(max, cx - half))}px`;
+        hintEl?.remove();
+        hintEl = null;
+      },
+      hint(text) {
+        hintEl = document.createElement('p');
+        hintEl.className = 'chart-hint';
+        hintEl.textContent = text;
+        host.append(hintEl);
+      },
+    };
   }
 
   /**
@@ -195,8 +223,8 @@ const Charts = (() => {
     const dot30 = dot(CLEAN());
     svg.append(rule, dot30, dot7);
 
-    host.append(svg);
-    const out = readout(host);
+    const p = plot(host);
+    p.wrap.append(svg);
 
     const fmt1 = v => (Math.round(v * 10) / 10).toFixed(1);
     const place = (node, i, v) => {
@@ -225,7 +253,7 @@ const Charts = (() => {
 
       // Nulls are gaps here too: a day whose window predates the record has no
       // rate, and printing 0.0 would assert the thing the gaps exist to avoid.
-      const parts = [`<b>${fmtDay(d.day)}</b>`];
+      const parts = [];
       if (d.per_week_7d == null) {
         parts.push('<span class="ro-dim">not enough history yet</span>');
       } else {
@@ -233,9 +261,12 @@ const Charts = (() => {
         if (d.per_week_30d != null) {
           parts.push(`<span class="ro-dim">30-day</span> ${fmt1(d.per_week_30d)}`);
         }
-        if (!wellLogged(d)) parts.push('<span class="ro-dim">· thinly logged</span>');
+        if (!wellLogged(d)) parts.push('<span class="ro-dim">· thin</span>');
       }
-      out.innerHTML = parts.join(' ');
+      // Value first, date under it — the value is what the gesture is for, and
+      // the date is how you confirm you landed on the right day.
+      p.show(`${parts.join(' ')}<br><span class="ro-dim">${fmtDay(d.day)}</span>`,
+             (x(i) / W) * box.width);
     });
 
     const hasSmooth = data.some(d => d.per_week_30d != null);
@@ -255,6 +286,8 @@ const Charts = (() => {
       note.textContent = 'Faded stretches are weeks with little logged — a low count there may just be a gap in the record.';
       host.append(note);
     }
+
+    p.hint('Drag across the chart to read a day.');
   }
 
   // ── Day ribbon ────────────────────────────────────────────────────────────
@@ -265,22 +298,43 @@ const Charts = (() => {
    * the record as a run of good days.
    */
   /**
-   * One line describing a day. Shared by the hover title and the scrub readout
-   * — two wordings for one cell is how they end up disagreeing about what
-   * "nothing logged" means.
+   * What a day says, as plain words. The hover title and the scrub pill format
+   * it differently but must never word it differently — two spellings of
+   * "nothing logged" is how they end up disagreeing about what the grey means.
    */
-  function cellLabel(d) {
-    const what = d.count > 1 ? `${d.count} slips`
-      : d.state === 'relapse' ? 'slip'
-      : d.state === 'clean' ? 'logged, no slip'
-      : 'nothing logged';
-    return `${fmtDay(d.day)} — ${what}${d.confirmed ? ', day confirmed' : ''}`;
+  function cellWords(d) {
+    return {
+      what: d.count > 1 ? `${d.count} slips`
+        : d.state === 'relapse' ? 'slip'
+        : d.state === 'clean' ? 'logged, no slip'
+        : 'nothing logged',
+      // A slip is the thing being looked for, so it carries the weight; the
+      // grey is de-emphasised for the same reason it is grey in the grid.
+      emphasis: d.count > 1 || d.state === 'relapse' ? 'b'
+        : d.state === 'clean' ? null : 'dim',
+      confirmed: !!d.confirmed,
+    };
   }
+
+  const cellTitle = d => {
+    const w = cellWords(d);
+    return `${fmtDay(d.day)} — ${w.what}${w.confirmed ? ', day confirmed' : ''}`;
+  };
+
+  const cellTip = d => {
+    const w = cellWords(d);
+    const what = w.emphasis === 'b' ? `<b>${w.what}</b>`
+      : w.emphasis === 'dim' ? `<span class="ro-dim">${w.what}</span>`
+      : w.what;
+    return `${what}${w.confirmed ? ' <span class="ro-dim">· confirmed</span>' : ''}` +
+      `<br><span class="ro-dim">${fmtDay(d.day)}</span>`;
+  };
 
   function ribbon(host, days) {
     host.innerHTML = '';
     if (!days.length) return empty(host, 'Nothing logged yet.');
 
+    const p = plot(host);
     const grid = document.createElement('div');
     grid.className = 'ribbon';
     for (const d of days) {
@@ -292,7 +346,7 @@ const Charts = (() => {
       const heavy = d.count > 1 ? ` ribbon-multi${Math.min(d.count, 3)}` : '';
       cell.className = `ribbon-cell ribbon-${d.state}${heavy}`;
       if (d.state !== 'pad') {
-        cell.title = cellLabel(d);
+        cell.title = cellTitle(d);
         // The scrub hit-tests the DOM, so the day rides on the node rather than
         // being recovered from grid arithmetic that would have to stay in sync
         // with the CSS.
@@ -301,8 +355,7 @@ const Charts = (() => {
       if (d.confirmed) cell.classList.add('ribbon-confirmed');
       grid.append(cell);
     }
-    host.append(grid);
-    const out = readout(host);
+    p.wrap.append(grid);
 
     let focused = null;
     scrub(grid, (clientX, clientY) => {
@@ -315,7 +368,11 @@ const Charts = (() => {
       focused?.classList.remove('is-focus');
       cell.classList.add('is-focus');
       focused = cell;
-      out.textContent = cellLabel(cell._day);
+
+      // Anchored to the cell's centre within the wrapper, not the viewport.
+      const box = cell.getBoundingClientRect();
+      const wrapBox = p.wrap.getBoundingClientRect();
+      p.show(cellTip(cell._day), box.left - wrapBox.left + box.width / 2);
     });
 
     const legend = document.createElement('div');
@@ -326,6 +383,8 @@ const Charts = (() => {
       `<span><i style="background:${CLEAN()}"></i>logged, no slip</span>` +
       `<span><i style="background:${UNKNOWN()}"></i>nothing logged</span>`;
     host.append(legend);
+
+    p.hint('Drag across the grid to read a day.');
   }
 
   return { rolling, ribbon };
