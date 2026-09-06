@@ -4,7 +4,7 @@
 // the worker install: a service worker only updates when its own bytes change,
 // so reading the version from somewhere else would deadlock — the worker would
 // serve the old value and the page would re-register what it already had.
-const VERSION = '20260905_2236';
+const VERSION = '20260905_2258';
 const CACHE = 'cadence-' + VERSION;
 
 // The same suffix the HTML carries, built from the stamped VERSION above.
