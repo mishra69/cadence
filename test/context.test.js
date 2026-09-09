@@ -145,13 +145,33 @@ test('a forgotten morning is excluded, not counted as a no', () => {
   // "Don't recall" is an answer about memory, not about the morning. Folding it
   // in either direction would invent a trend out of forgetfulness.
   const events = [...EVENTS,
+    { kind: 'daily', ts_utc: ago(1), morning_wood: 3, context: [] },
+    { kind: 'daily', ts_utc: ago(2), morning_wood: 2, context: [] },
+    { kind: 'daily', ts_utc: ago(3), morning_wood: 0, context: [] },
+    { kind: 'daily', ts_utc: ago(4), morning_wood: 4, context: [] },
+    { kind: 'daily', ts_utc: ago(5), morning_wood: 4, context: [] },
+  ];
+  assert.match(build({ events }), /Morning erections: 2 of the last 3 mornings I could remember\./);
+});
+
+test('strength is reported only where strength was asked', () => {
+  const graded = [...EVENTS,
+    { kind: 'daily', ts_utc: ago(1), morning_wood: 3, context: [] },
+    { kind: 'daily', ts_utc: ago(2), morning_wood: 2, context: [] },
+    { kind: 'daily', ts_utc: ago(3), morning_wood: 0, context: [] },
+  ];
+  assert.match(build({ events: graded }), /Of those: 1 strong, 1 mild\./);
+
+  // The legacy binary "yes" counts as present but has no strength. Reporting it
+  // as either would manufacture the distinction this question was added to make.
+  const legacy = [...EVENTS,
     { kind: 'daily', ts_utc: ago(1), morning_wood: 1, context: [] },
     { kind: 'daily', ts_utc: ago(2), morning_wood: 1, context: [] },
     { kind: 'daily', ts_utc: ago(3), morning_wood: 0, context: [] },
-    { kind: 'daily', ts_utc: ago(4), morning_wood: 2, context: [] },
-    { kind: 'daily', ts_utc: ago(5), morning_wood: 2, context: [] },
   ];
-  assert.match(build({ events }), /Morning erections: 2 of the last 3 mornings I could remember\./);
+  const out = build({ events: legacy });
+  assert.match(out, /Morning erections: 2 of the last 3 mornings/);
+  assert.ok(!/Of those:/.test(out), 'legacy rows must not be given a strength');
 });
 
 // ── Degenerate cases ────────────────────────────────────────────────────────

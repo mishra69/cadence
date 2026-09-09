@@ -249,11 +249,15 @@ test('morning_wood is recorded on the daily check-in only', () => {
   }
 });
 
-test('morning_wood is no / yes / don\'t recall, and omitted stays null', () => {
+test('morning_wood is none / mild / strong / don\'t recall, and omitted stays null', () => {
   // Not a count: by check-in time "twice" and "three times" are not reliably
-  // distinguishable, so the extra resolution was noise. 2 means "don't recall",
+  // distinguishable, so that resolution was noise. Strength is not — it is a
+  // property of the one event, not a tally of repeats. 4 means "don't recall",
   // which is an answer and must stay distinct from NULL (never asked).
-  for (const v of [0, 1, 2]) {
+  //
+  // 1 is accepted but never offered: it is the legacy binary "yes" from before
+  // strength was asked, kept so the rows carrying it are not relabelled.
+  for (const v of [0, 1, 2, 3, 4]) {
     assert.equal(
       normalizeEvent({ id: uuid(), kind: 'daily', ts_utc: NOW, tz: IST, morning_wood: v }, S, NOW).morning_wood,
       v);
@@ -261,7 +265,7 @@ test('morning_wood is no / yes / don\'t recall, and omitted stays null', () => {
   const bad = v => assert.throws(
     () => normalizeEvent({ id: uuid(), kind: 'daily', ts_utc: NOW, tz: IST, morning_wood: v }, S, NOW),
     ValidationError, String(v));
-  bad(3); bad(4); bad(-1); bad(1.5);
+  bad(5); bad(-1); bad(1.5);
   assert.equal(
     normalizeEvent({ id: uuid(), kind: 'daily', ts_utc: NOW, tz: IST }, S, NOW).morning_wood,
     null);

@@ -737,24 +737,32 @@ const App = (() => {
   // resolution was noise wearing the clothes of data. "Don't recall" is offered
   // explicitly so a forgotten morning is recorded as forgotten rather than
   // silently becoming a no.
-  const MORNING_LABELS = ['no', 'yes', "don't recall"];
+  // Keyed by stored value, not positional: 1 is the legacy binary "yes" and is
+  // never offered again, so an array indexed by position would silently shift
+  // every historical reading by one. See worker/lib/events.js for the encoding.
+  const MORNING_LABELS = { 0: 'none', 1: 'yes', 2: 'mild', 3: 'strong', 4: "don't recall" };
+
+  // Strongest first, then down to none, with the non-answer last. Ordering it
+  // this way keeps "none" and "don't recall" adjacent at the end, where a
+  // mis-tap between the two is least likely to be read as a strength.
+  const MORNING_OPTIONS = [3, 2, 0, 4];
 
   function renderMorning() {
     const wrap = $('morning-chips');
     wrap.innerHTML = '';
-    MORNING_LABELS.forEach((label, i) => {
+    for (const value of MORNING_OPTIONS) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.textContent = label;
-      b.setAttribute('aria-pressed', String(sweep?.morning_wood === i));
+      b.textContent = MORNING_LABELS[value];
+      b.setAttribute('aria-pressed', String(sweep?.morning_wood === value));
       b.onclick = () => {
         // Tapping the selection clears it — the field is optional, and 0 is a
         // real answer that must stay distinct from "didn't say".
-        sweep.morning_wood = sweep.morning_wood === i ? null : i;
+        sweep.morning_wood = sweep.morning_wood === value ? null : value;
         renderMorning();
       };
       wrap.append(b);
-    });
+    }
   }
 
   /**
@@ -770,13 +778,13 @@ const App = (() => {
     show('morning');
     const wrap = $('morning-now-chips');
     wrap.innerHTML = '';
-    MORNING_LABELS.forEach((label, i) => {
+    for (const value of MORNING_OPTIONS) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.textContent = label;
+      b.textContent = MORNING_LABELS[value];
       b.onclick = async () => {
         for (const x of wrap.querySelectorAll('button')) x.disabled = true;
-        await API.log({ kind: 'daily', morning_wood: i });
+        await API.log({ kind: 'daily', morning_wood: value });
         $('done-text').textContent = 'Noted.';
         show('done');
         doneTimer = setTimeout(() => {
@@ -786,7 +794,7 @@ const App = (() => {
         }, CONFIG.DONE_MS);
       };
       wrap.append(b);
-    });
+    }
   }
 
   /** Re-read today so an added or removed entry shows up in the list itself. */

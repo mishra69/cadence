@@ -107,15 +107,27 @@ export function normalizeEvent(raw, settings, now = Date.now()) {
   // Not a count. "Twice or three times" asks for a precision nobody actually
   // has hours later, and an unreliable number is worse than a reliable bit.
   //
+  // 0 none · 1 yes (legacy) · 2 mild · 3 strong · 4 don't recall.
+  //
+  // The question was binary until 2026-09-08, so `1` means "yes, strength never
+  // asked" and is no longer offered. It is kept rather than folded into mild or
+  // strong because the three rows carrying it did not answer that question —
+  // relabelling them would invent the very distinction this change adds. New
+  // values were numbered above it, which cost nothing: `2` had meant "don't
+  // recall" and no row in production ever used it.
+  //
   // "Don't recall" is a stored *answer*, distinct from NULL, which means the
-  // question was never put. Rates must be computed over 0 and 1 only — counting
-  // a 2 as a no would understate in a way that looks like a finding.
+  // question was never put. Rates must be computed over the answered values
+  // only — counting a 4 as a none would understate in a way that looks like a
+  // finding.
   let morning_wood = null;
   if (raw.morning_wood != null) {
     if (kind !== 'daily') throw new ValidationError('morning_wood is only valid on a daily check-in');
     morning_wood = Number(raw.morning_wood);
-    if (!Number.isInteger(morning_wood) || morning_wood < 0 || morning_wood > 2) {
-      throw new ValidationError('morning_wood must be 0 (no), 1 (yes) or 2 (don\'t recall)');
+    if (!Number.isInteger(morning_wood) || morning_wood < 0 || morning_wood > 4) {
+      throw new ValidationError(
+        "morning_wood must be 0 (none), 2 (mild), 3 (strong) or 4 (don't recall)"
+      );
     }
   }
 

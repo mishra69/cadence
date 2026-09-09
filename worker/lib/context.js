@@ -203,14 +203,21 @@ export function buildContext({ mode, stats, events, term = null, includeNotes = 
     }
   }
 
-  // 0 = no, 1 = yes, 2 = don't recall. Only the first two are a rate; a "don't
-  // recall" is an answer about memory, not about the morning, and folding it in
-  // either direction would invent a trend.
+  // 0 none · 1 yes (legacy) · 2 mild · 3 strong · 4 don't recall. Only the first
+  // four are a rate; a "don't recall" is an answer about memory, not about the
+  // morning, and folding it in either direction would invent a trend.
   const recalled_mornings = events.filter(
-    e => e.kind === 'daily' && (e.morning_wood === 0 || e.morning_wood === 1));
+    e => e.kind === 'daily' && e.morning_wood != null && e.morning_wood <= 3);
   if (recalled_mornings.length >= 3) {
-    const yes = recalled_mornings.filter(e => e.morning_wood === 1).length;
-    lines.push('', `Morning erections: ${yes} of the last ${recalled_mornings.length} mornings I could remember.`);
+    const present = recalled_mornings.filter(e => e.morning_wood > 0);
+    lines.push('', `Morning erections: ${present.length} of the last ${recalled_mornings.length} mornings I could remember.`);
+
+    // The split is only mentioned where it was actually asked. Rows carrying the
+    // legacy 1 predate the question, and counting them as either strength would
+    // manufacture the distinction rather than report it.
+    const strong = present.filter(e => e.morning_wood === 3).length;
+    const mild = present.filter(e => e.morning_wood === 2).length;
+    if (strong || mild) lines.push(`Of those: ${strong} strong, ${mild} mild.`);
   }
 
   if (includeNotes) {

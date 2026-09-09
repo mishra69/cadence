@@ -23,8 +23,11 @@ CREATE TABLE IF NOT EXISTS events (
   context      TEXT,                  -- JSON array: ['alone','in_bed','phone','tired','bored','stressed']
                                       -- recorded on BOTH urge and relapse events — comparing the
                                       -- two distributions is what replaces per-urge outcome
-  morning_wood INTEGER,               -- 0–3, 'daily' only. A property of the day rather
+  morning_wood INTEGER,               -- 'daily' only. A property of the day rather
                                       -- than a moment, so it lives on the check-in.
+                                      -- 0 none · 2 mild · 3 strong · 4 don't recall.
+                                      -- 1 is legacy "yes", from when the question was
+                                      -- binary; never written again. See events.js.
                                       -- NULL = not answered, which is not the same as 0.
   note         TEXT,                  -- free text, readable server-side by design (Appendix A)
   recalled     INTEGER NOT NULL DEFAULT 0,  -- 1 = backfilled via nightly sweep
