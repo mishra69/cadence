@@ -77,44 +77,19 @@ const App = (() => {
 
   // ── Streak tumbler ────────────────────────────────────────────────────────
 
-  const DAY_MS = 86_400_000;
   // Glass interior in viewBox units, matching the clip path in index.html.
   const GLASS_TOP = 4, GLASS_BOTTOM = 54;
 
   let tumblerFrom = null;   // last relapse, epoch ms
 
-  // Nothing is shown for the first few hours after a relapse. An empty glass
-  // beside a full "24h 0m" is the least useful the thing ever looks, and those
-  // are the hours it would be looked at hardest — §0's whole line on tone is
-  // that the app reports and does not comment, and a conspicuously empty vessel
-  // an hour after a slip is a comment.
-  //
-  // Deliberately measured from the relapse, not from the current 24h cycle: the
-  // glass also empties at every daily tick, but that emptying is a day earned
-  // rather than a day lost, and there is no reason to hide it.
-  const TUMBLER_SETTLE_MS = 4 * 3_600_000;
-
-  /**
-   * Fills as the current streak day does, emptying at each 24h tick.
-   *
-   * Anchored to the last relapse rather than to the logical day, because that
-   * is what the streak itself counts — `streakDays` is elapsed time, not
-   * calendar days (§3), so a fill tied to the 04:00 boundary would empty at a
-   * different moment than the number above it increments.
-   */
+  /** Draws whatever Calc.tumblerState decided. The decisions are tested; this is not. */
   function renderTumbler(now = Date.now()) {
     const host = $('tumbler');
-    if (tumblerFrom == null) { host.hidden = true; return; }
+    const t = Calc.tumblerState(tumblerFrom, now);
+    host.hidden = !t.visible;
+    if (!t.visible) return;
 
-    const elapsed = Math.max(0, now - tumblerFrom);
-    if (elapsed < TUMBLER_SETTLE_MS) { host.hidden = true; return; }
-    host.hidden = false;
-    const into = elapsed % DAY_MS;
-    const frac = into / DAY_MS;
-    const left = DAY_MS - into;
-    const nextDay = Math.floor(elapsed / DAY_MS) + 1;
-
-    const h = (GLASS_BOTTOM - GLASS_TOP) * frac;
+    const h = (GLASS_BOTTOM - GLASS_TOP) * t.fill;
     $('tumbler-fill').setAttribute('y', GLASS_BOTTOM - h);
     $('tumbler-fill').setAttribute('height', h);
     // Sits on top of the fill, clipped to the glass like everything else, so it
@@ -122,10 +97,8 @@ const App = (() => {
     $('tumbler-meniscus').setAttribute('y', GLASS_BOTTOM - h);
     $('tumbler-meniscus').setAttribute('height', h > 0 ? 2 : 0);
 
-    const hours = Math.floor(left / 3_600_000);
-    const mins = Math.floor((left % 3_600_000) / 60_000);
-    $('tumbler-value').textContent = hours ? `${hours}h ${mins}m` : `${mins}m`;
-    $('tumbler-label').textContent = `to day ${nextDay}`;
+    $('tumbler-value').textContent = t.value;
+    $('tumbler-label').textContent = t.label;
   }
 
   // No timer. The tumbler is drawn when Progress renders and then left alone:
@@ -980,21 +953,6 @@ const App = (() => {
   }
 
   /**
-   * The logical day a wall-clock instant belongs to, as a local Date.
-   *
-   * Shifts the **wall clock**, not the instant — `ts - 4h` is a day out for an
-   * 04:00–05:00 event on the spring-forward DST date. Same correction PLAN.md §3
-   * records for the server's derive(); the two must agree or this control would
-   * promise a day the server then disagrees with.
-   */
-  function logicalDateOf(ts, boundaryHour) {
-    const d = new Date(ts);
-    if (d.getHours() < boundaryHour) d.setDate(d.getDate() - 1);
-    d.setHours(12, 0, 0, 0);
-    return d;
-  }
-
-  /**
    * Hour-granularity "when did it happen", for a relapse logged after the fact.
    *
    * Hours rather than a clock picker because an hour is the honest resolution of
@@ -1006,36 +964,35 @@ const App = (() => {
    * apart; a time you actually remember from this morning is not that.
    */
   function renderHour() {
-    const boundary = appSettings.day_boundary_hour;
-    const maxBack = appSettings.backfill_window_days * 24;
-    const now = Date.now();
-    const ts = now - draft.hoursAgo * 3_600_000;
+    const p = Calc.hourPick({
+      hoursAgo: draft.hoursAgo,
+      now: Date.now(),
+      boundaryHour: appSettings.day_boundary_hour,
+      backfillDays: appSettings.backfill_window_days,
+    });
 
-    $('hour-back').disabled = draft.hoursAgo >= maxBack;
-    $('hour-fwd').disabled = draft.hoursAgo <= 0;
+    $('hour-back').disabled = !p.canBack;
+    $('hour-fwd').disabled = !p.canFwd;
 
-    $('hour-label').textContent = new Date(ts)
-      .toLocaleTimeString([], { hour: 'numeric', minute: draft.hoursAgo ? undefined : '2-digit' });
+    $('hour-label').textContent = new Date(p.ts)
+      .toLocaleTimeString([], { hour: 'numeric', minute: p.hoursAgo ? undefined : '2-digit' });
 
     const sub = $('hour-sub');
-    const ago = draft.hoursAgo === 0 ? 'now' : plural(draft.hoursAgo, 'hour') + ' ago';
-    const today = logicalDateOf(now, boundary);
-    const then = logicalDateOf(ts, boundary);
-    if (then.getTime() === today.getTime()) {
+    const ago = p.hoursAgo === 0 ? 'now' : plural(p.hoursAgo, 'hour') + ' ago';
+    if (!p.flipped) {
       sub.textContent = ago;
     } else {
       // The reason this control exists: before 04:00 belongs to the previous
       // logical day, so a 1am relapse logged at 9am would otherwise be filed a
       // whole day late — moving the ribbon cell, the streak start, and both
       // attempt lengths around it.
-      const day = then.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+      const day = p.logicalDate.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
       sub.innerHTML = `${ago} · <span class="hour-flip">counts as ${day}</span>`;
     }
   }
 
   function stepHour(by) {
-    const maxBack = appSettings.backfill_window_days * 24;
-    draft.hoursAgo = Math.max(0, Math.min(maxBack, draft.hoursAgo + by));
+    draft.hoursAgo = Calc.stepHoursAgo(draft.hoursAgo, by, appSettings.backfill_window_days);
     renderHour();
   }
 

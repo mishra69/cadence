@@ -18,6 +18,7 @@ const SHELL = [
   '/',
   '/css/styles.css' + V,
   '/js/config.js' + V,
+  '/js/calc.js' + V,
   '/js/idb.js' + V,
   '/js/api.js' + V,
   '/js/charts.js' + V,

@@ -228,12 +228,10 @@ const Charts = (() => {
     scrub(svg, clientX => {
       const box = svg.getBoundingClientRect();
       if (!box.width) return;
-      // Client px → viewBox units. The SVG scales to the container width, so the
-      // ratio is the only thing that carries across; reading offsetX would be
-      // wrong by exactly that scale factor.
-      const vx = ((clientX - box.left) / box.width) * W;
-      const t = data.length === 1 ? 0 : ((vx - P.l) / iw) * (data.length - 1);
-      const i = Math.max(0, Math.min(data.length - 1, Math.round(t)));
+      const i = Calc.scrubIndex({
+        clientX, boxLeft: box.left, boxWidth: box.width,
+        viewWidth: W, padLeft: P.l, innerWidth: iw, count: data.length,
+      });
       const d = data[i];
 
       rule.setAttribute('x1', x(i));
@@ -287,33 +285,14 @@ const Charts = (() => {
    * not a day nothing happened, and colouring it as clean would present a gap in
    * the record as a run of good days.
    */
-  /**
-   * What a day says, as plain words. The hover title and the scrub pill format
-   * it differently but must never word it differently — two spellings of
-   * "nothing logged" is how they end up disagreeing about what the grey means.
-   */
-  function cellWords(d) {
-    return {
-      what: d.count > 1 ? `${d.count} slips`
-        : d.state === 'relapse' ? 'slip'
-        : d.state === 'clean' ? 'logged, no slip'
-        : 'nothing logged',
-      // A slip is the thing being looked for, so it carries the weight; the
-      // grey is de-emphasised for the same reason it is grey in the grid.
-      emphasis: d.count > 1 || d.state === 'relapse' ? 'b'
-        : d.state === 'clean' ? null : 'dim',
-      confirmed: !!d.confirmed,
-    };
-  }
-
   const cellTitle = d => {
-    const w = cellWords(d);
+    const w = Calc.dayWords(d);
     return `${fmtDay(d.day)} — ${w.what}${w.confirmed ? ', day confirmed' : ''}`;
   };
 
   const cellTip = d => {
-    const w = cellWords(d);
-    const what = w.emphasis === 'b' ? `<b>${w.what}</b>`
+    const w = Calc.dayWords(d);
+    const what = w.emphasis === 'strong' ? `<b>${w.what}</b>`
       : w.emphasis === 'dim' ? `<span class="ro-dim">${w.what}</span>`
       : w.what;
     return `${what}${w.confirmed ? ' <span class="ro-dim">· confirmed</span>' : ''}` +
