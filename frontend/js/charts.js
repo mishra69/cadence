@@ -54,7 +54,6 @@ const Charts = (() => {
     wrap.append(tip);
     host.append(wrap);
 
-    let hintEl = null;
     return {
       wrap,
       /** @param {string} html  @param {number} cx  centre, in px within wrap */
@@ -65,14 +64,6 @@ const Charts = (() => {
         const half = tip.offsetWidth / 2;
         const max = wrap.clientWidth - tip.offsetWidth;
         tip.style.left = `${Math.max(0, Math.min(max, cx - half))}px`;
-        hintEl?.remove();
-        hintEl = null;
-      },
-      hint(text) {
-        hintEl = document.createElement('p');
-        hintEl.className = 'chart-hint';
-        hintEl.textContent = text;
-        host.append(hintEl);
       },
     };
   }
@@ -287,7 +278,6 @@ const Charts = (() => {
       host.append(note);
     }
 
-    p.hint('Drag across the chart to read a day.');
   }
 
   // ── Day ribbon ────────────────────────────────────────────────────────────
@@ -384,7 +374,6 @@ const Charts = (() => {
       `<span><i style="background:${UNKNOWN()}"></i>nothing logged</span>`;
     host.append(legend);
 
-    p.hint('Drag across the grid to read a day.');
   }
 
   return { rolling, ribbon };

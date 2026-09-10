@@ -56,7 +56,10 @@ const App = (() => {
     Lock.veil(false);
     if (name !== 'done' && doneTimer) { clearTimeout(doneTimer); doneTimer = null; }
     renderLockWarning();
-    scrollTo(0, 0);
+    // The screen scrolls itself now, not the document — scrollTo(0, 0) here
+    // moved a window that no longer scrolls, leaving the new screen wherever
+    // the last one had been left.
+    screens[name]?.scrollTo(0, 0);
   }
 
   function toast(message, ms = 2400) {
