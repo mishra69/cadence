@@ -50,8 +50,9 @@ not a subpoena.
   the `<title>`, or any notification string names or alludes to the behavior — the word for it
   should not appear anywhere outside the app's own locked interior.
 - Face ID / Touch ID on open, PIN fallback (§4.1).
-- Content blanked when backgrounded (§4.1) — the app-switcher snapshot leaks more than the
-  lock screen.
+- ~~Content blanked when backgrounded (§4.1) — the app-switcher snapshot leaks more than the
+  lock screen.~~ **NOT MET. Confirmed unachievable on device, 2026-09-09 — see §4.1.**
+  The app-switcher thumbnail shows the real screen and must be treated as public.
 - Notes are **not** encrypted at rest; see Appendix A.
 
 **Hostname: `cadence.mishabhi.workers.dev`** — fixed before phase 1 step 8, because the
@@ -303,6 +304,28 @@ Constraints, all of which are load-bearing:
 the view with a neutral placeholder. iOS snapshots the app for the app switcher, and that
 thumbnail bypasses the lock entirely. Re-lock on resume after a short idle timeout (default 60s)
 so quick app-switching mid-log isn't punished.
+
+> **Amended 2026-09-09 — this half does not work, and cannot be made to.**
+>
+> The handlers fire; that is verified. What cannot be forced is a *paint* before
+> iOS takes the snapshot, and iOS captures the last frame it painted — the one
+> from before the handler ran. Two implementations were tried: toggling `display`
+> (the original), and holding the veil on a pre-promoted compositor layer and
+> toggling only `opacity`, so raising it cost neither layout nor paint. Neither
+> changed what the app switcher shows.
+>
+> A native app is handed `applicationWillResignActive` and a guaranteed render
+> opportunity. A web app has no equivalent. This is a platform limit, not a bug
+> to keep chasing — **do not spend more time on it without new platform news.**
+>
+> **Consequence, stated plainly: the app-switcher thumbnail is public.** Anyone
+> who can see the phone's switcher can see the last screen that was open,
+> including Home with its "Log a relapse" button. The lock still protects the
+> *contents* — history, notes, counts — since those need the app opened.
+>
+> The veil is kept: it still does the two jobs it succeeds at, blanking the cold
+> start before the lock screen paints and covering the moment the app re-locks
+> on resume. Its presence in the code is not evidence this requirement is met.
 
 **Do not use the PRF extension.** It was considered for deriving a note-encryption key from the
 authenticator; ruled out along with note encryption generally (§0).

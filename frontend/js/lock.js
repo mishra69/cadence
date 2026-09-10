@@ -199,8 +199,18 @@ const Lock = (() => {
 
   function onHide() {
     hiddenAt = Date.now();
-    // Synchronous, and before anything else — the snapshot can be taken the
-    // instant this event fires.
+    // ⚠️ THIS DOES NOT PROTECT THE APP-SWITCHER SNAPSHOT. Confirmed on device,
+    // 2026-09-09: the switcher still shows the real screen. The handler runs —
+    // that much is verified — but iOS snapshots the last frame it *painted*,
+    // and there is no way to make it paint one first. Toggling opacity on a
+    // pre-promoted layer instead of display was tried and changed nothing.
+    //
+    // A native app gets applicationWillResignActive and a guaranteed chance to
+    // render. A web app gets no equivalent, so treat the snapshot as public.
+    //
+    // Kept anyway because it costs nothing and may hold on some iOS versions,
+    // and because raising the veil here means it is already up if the app locks
+    // on resume. Do not read its presence as the requirement being met.
     veil(true);
   }
 

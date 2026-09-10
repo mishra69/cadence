@@ -103,22 +103,8 @@ button, .btn, [role="button"], input, select, textarea, a {
   align-items: center;
   justify-content: center;
   background: var(--bg);
-  opacity: 1;
-  /* Hold it on its own compositor layer for the life of the app. Raising the
-     veil then costs a composite and nothing else, which is the only kind of
-     change with a chance of reaching the screen in time. */
-  will-change: opacity;
 }
-/* Deliberately NOT display:none. The UA default for [hidden] takes the veil out
-   of layout, so raising it at backgrounding needs a layout pass and a paint —
-   and iOS snapshots the last frame it painted, which is the frame before the
-   handler ran. Staying laid out and flipping opacity removes both steps.
-   No transition here either: a fade is frames this cannot spare. */
-.veil[hidden] {
-  display: flex;
-  opacity: 0;
-  pointer-events: none;
-}
+.veil[hidden] { display: none; }
 .veil img { opacity: 0.85; border-radius: 12px; }
 
 /* ── Screens ─────────────────────────────────────────────────────────────── */
