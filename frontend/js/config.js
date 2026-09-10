@@ -1,6 +1,6 @@
 // Build stamp and client-side constants. deploy.sh rewrites VERSION in place.
 const CONFIG = {
-  VERSION: '20260909_1957',
+  VERSION: '20260909_2039',
 
   // WebAuthn relying-party id (plan §4.1). This MUST be the full hostname.
   //
