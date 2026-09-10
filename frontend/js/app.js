@@ -128,12 +128,11 @@ const App = (() => {
     $('tumbler-label').textContent = `to day ${nextDay}`;
   }
 
-  // One timer for the life of the app rather than one per render: it costs
-  // nothing when the screen is hidden, and starting and stopping it on every
-  // navigation is more state than a minute tick is worth.
-  setInterval(() => {
-    if (!screens.progress?.hidden) renderTumbler();
-  }, 30_000);
+  // No timer. The tumbler is drawn when Progress renders and then left alone:
+  // a level that creeps up while being watched invites watching it, and this
+  // screen already exists behind a deliberate tap for that reason (§0).
+  // refreshProgress() runs on tab switch and on resume, which is often enough
+  // for a reading measured in hours.
 
   // ── Home ──────────────────────────────────────────────────────────────────
 
