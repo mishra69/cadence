@@ -83,6 +83,17 @@ const App = (() => {
 
   let tumblerFrom = null;   // last relapse, epoch ms
 
+  // Nothing is shown for the first few hours after a relapse. An empty glass
+  // beside a full "24h 0m" is the least useful the thing ever looks, and those
+  // are the hours it would be looked at hardest — §0's whole line on tone is
+  // that the app reports and does not comment, and a conspicuously empty vessel
+  // an hour after a slip is a comment.
+  //
+  // Deliberately measured from the relapse, not from the current 24h cycle: the
+  // glass also empties at every daily tick, but that emptying is a day earned
+  // rather than a day lost, and there is no reason to hide it.
+  const TUMBLER_SETTLE_MS = 4 * 3_600_000;
+
   /**
    * Fills as the current streak day does, emptying at each 24h tick.
    *
@@ -94,9 +105,10 @@ const App = (() => {
   function renderTumbler(now = Date.now()) {
     const host = $('tumbler');
     if (tumblerFrom == null) { host.hidden = true; return; }
-    host.hidden = false;
 
     const elapsed = Math.max(0, now - tumblerFrom);
+    if (elapsed < TUMBLER_SETTLE_MS) { host.hidden = true; return; }
+    host.hidden = false;
     const into = elapsed % DAY_MS;
     const frac = into / DAY_MS;
     const left = DAY_MS - into;
