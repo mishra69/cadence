@@ -75,6 +75,54 @@ const App = (() => {
   // Takes an explicit plural because naive +'s' produces "entrys".
   function plural(n, unit, many = unit + 's') { return `${n} ${n === 1 ? unit : many}`; }
 
+  // ── Streak tumbler ────────────────────────────────────────────────────────
+
+  const DAY_MS = 86_400_000;
+  // Glass interior in viewBox units, matching the clip path in index.html.
+  const GLASS_TOP = 4, GLASS_BOTTOM = 54;
+
+  let tumblerFrom = null;   // last relapse, epoch ms
+
+  /**
+   * Fills as the current streak day does, emptying at each 24h tick.
+   *
+   * Anchored to the last relapse rather than to the logical day, because that
+   * is what the streak itself counts — `streakDays` is elapsed time, not
+   * calendar days (§3), so a fill tied to the 04:00 boundary would empty at a
+   * different moment than the number above it increments.
+   */
+  function renderTumbler(now = Date.now()) {
+    const host = $('tumbler');
+    if (tumblerFrom == null) { host.hidden = true; return; }
+    host.hidden = false;
+
+    const elapsed = Math.max(0, now - tumblerFrom);
+    const into = elapsed % DAY_MS;
+    const frac = into / DAY_MS;
+    const left = DAY_MS - into;
+    const nextDay = Math.floor(elapsed / DAY_MS) + 1;
+
+    const h = (GLASS_BOTTOM - GLASS_TOP) * frac;
+    $('tumbler-fill').setAttribute('y', GLASS_BOTTOM - h);
+    $('tumbler-fill').setAttribute('height', h);
+    // Sits on top of the fill, clipped to the glass like everything else, so it
+    // narrows with the taper instead of overhanging it.
+    $('tumbler-meniscus').setAttribute('y', GLASS_BOTTOM - h);
+    $('tumbler-meniscus').setAttribute('height', h > 0 ? 2 : 0);
+
+    const hours = Math.floor(left / 3_600_000);
+    const mins = Math.floor((left % 3_600_000) / 60_000);
+    $('tumbler-value').textContent = hours ? `${hours}h ${mins}m` : `${mins}m`;
+    $('tumbler-label').textContent = `to day ${nextDay}`;
+  }
+
+  // One timer for the life of the app rather than one per render: it costs
+  // nothing when the screen is hidden, and starting and stopping it on every
+  // navigation is more state than a minute tick is worth.
+  setInterval(() => {
+    if (!screens.progress?.hidden) renderTumbler();
+  }, 30_000);
+
   // ── Home ──────────────────────────────────────────────────────────────────
 
   function renderStats(s) {
@@ -88,6 +136,9 @@ const App = (() => {
       : d(s.streak_days);
     $('stat-best').textContent = d(s.best_days);
     $('stat-typical').textContent = d(s.median_attempt_days);
+
+    tumblerFrom = s.last_relapse_ts ?? null;
+    renderTumbler();
 
     const parts = [];
     if (s.streak_days == null && s.has_data) parts.push('no relapse logged yet');

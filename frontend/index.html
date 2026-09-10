@@ -139,6 +139,27 @@
     </div>
     <p class="coverage" id="coverage"></p>
 
+    <!-- How far into the current day the streak is. Hidden until there is a
+         relapse on record, because without one there is no 24h anchor to fill
+         against and the app would be counting toward an invented boundary. -->
+    <div class="tumbler" id="tumbler" hidden>
+      <svg class="tumbler-glass" viewBox="0 0 40 58" aria-hidden="true">
+        <defs>
+          <clipPath id="tumbler-clip">
+            <path d="M5,4 L35,4 L30.5,51 A3.5,3.5 0 0 1 27,54 L13,54 A3.5,3.5 0 0 1 9.5,51 Z" />
+          </clipPath>
+        </defs>
+        <rect id="tumbler-fill" clip-path="url(#tumbler-clip)" x="0" width="40" y="4" height="0" />
+        <rect id="tumbler-meniscus" clip-path="url(#tumbler-clip)" x="0" width="40" y="4" height="0" />
+        <path class="tumbler-outline"
+              d="M5,4 L35,4 L30.5,51 A3.5,3.5 0 0 1 27,54 L13,54 A3.5,3.5 0 0 1 9.5,51 Z" />
+      </svg>
+      <div class="tumbler-read">
+        <b id="tumbler-value">—</b>
+        <span id="tumbler-label"></span>
+      </div>
+    </div>
+
     <section class="panel">
       <h2 class="panel-title">Today</h2>
       <ul id="today-list" class="timeline"></ul>

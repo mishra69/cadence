@@ -214,6 +214,35 @@ button, .btn, [role="button"], input, select, textarea, a {
   margin: 10px 0 0;
 }
 
+/* ── Streak tumbler ────────────────────────────────────────────────────────
+   How far into the current day the streak is, filling as the day does.
+   Drawn in --accent rather than a --viz colour: this is a UI affordance, not
+   an encoded category, and borrowing --viz-clean would quietly imply it means
+   the same thing here as it does in the ribbon. */
+.tumbler {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 16px 0 0;
+}
+.tumbler[hidden] { display: none; }
+.tumbler-glass { width: 34px; height: 49px; flex: none; overflow: visible; }
+.tumbler-outline { fill: none; stroke: var(--line); stroke-width: 2; }
+#tumbler-fill { fill: var(--accent); opacity: 0.55; }
+/* The liquid surface, so the level reads as a line rather than as the top edge
+   of a block that happens to stop there. */
+#tumbler-meniscus { fill: var(--accent); }
+.tumbler-read { display: flex; flex-direction: column; gap: 1px; }
+.tumbler-read b {
+  font-size: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* Matter-of-fact, never loss framing (§0): this says where the day is up to,
+   not what happens if it is broken. */
+.tumbler-read span { font-size: 12px; color: var(--text-faint); letter-spacing: 0.05em; }
+
 /* Unverified: the number is unchanged, only the confidence in it. Dimmed
    rather than alarming — this is missing evidence, not a failure. */
 .stat.unverified .stat-value { opacity: 0.5; }
