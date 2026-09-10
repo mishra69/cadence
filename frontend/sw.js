@@ -109,10 +109,17 @@ self.addEventListener('notificationclick', e => {
     for (const c of all) {
       if (new URL(c.url).origin === location.origin) {
         await c.focus();
-        if ('navigate' in c) await c.navigate(target).catch(() => {});
+        // NOT WindowClient.navigate(): Safari does not implement it, so on the
+        // one platform this feature exists for, focusing was the only thing
+        // that happened. The ?action= never reached a page that was already
+        // running, and a check-in tap surfaced whatever screen was already
+        // open — Home, usually. postMessage is supported everywhere and does
+        // not reload the page out from under an in-progress log.
+        c.postMessage({ type: 'notification-action', url: target });
         return;
       }
     }
+    // Nothing running, so the action can ride in on the URL of a cold open.
     await self.clients.openWindow(target);
   })());
 });

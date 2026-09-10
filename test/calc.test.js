@@ -161,12 +161,48 @@ test('a day says what it is, and a slip carries the weight', () => {
     { what: 'nothing logged', emphasis: 'dim', confirmed: false });
 });
 
+// ── Notification deep links ─────────────────────────────────────────────────
+
+test('a deep link yields its action and the notification that sent it', () => {
+  const O = 'https://cadence.example';
+  assert.deepEqual({ ...Calc.readAction('/?action=sweep&n=abc-123', O) },
+    { action: 'sweep', notificationId: 'abc-123' });
+  assert.deepEqual({ ...Calc.readAction('/?action=morning&n=x', O) },
+    { action: 'morning', notificationId: 'x' });
+  // Absolute too: a cold open parses location.href, a running app parses a URL
+  // posted in by the service worker. Both must read the same.
+  assert.deepEqual({ ...Calc.readAction(O + '/?action=relapse&n=q', O) },
+    { action: 'relapse', notificationId: 'q' });
+});
+
+test('an unrecognised action comes back null rather than being routed', () => {
+  // consumePendingAction falls through to openLog(action) for anything it does
+  // not recognise, so a stray value must never reach it.
+  const O = 'https://cadence.example';
+  assert.equal(Calc.readAction('/?action=bogus&n=y', O).action, null);
+  assert.equal(Calc.readAction('/?action=&n=y', O).action, null);
+  assert.equal(Calc.readAction('/', O).action, null);
+  // A notification id can arrive without an action; the open is still recorded.
+  assert.equal(Calc.readAction('/?n=only', O).notificationId, 'only');
+  assert.equal(Calc.readAction('/', O).notificationId, null);
+});
+
+test('every action the push sender emits is one the client accepts', () => {
+  // worker/do/daily-push.js sends exactly these two. If either side is renamed
+  // without the other, the tap silently lands on whatever screen was open —
+  // which is precisely the bug this pairing exists to prevent.
+  for (const a of ['sweep', 'morning']) {
+    assert.equal(Calc.readAction(`/?action=${a}`, 'https://x').action, a);
+  }
+});
+
 // ── The loader itself ───────────────────────────────────────────────────────
 
-test('calc.js reaches for no browser globals', () => {
-  // It runs in a bare vm context, so any use of document, window or localStorage
-  // would have thrown on load rather than reaching this line. Asserting it
-  // explicitly keeps the guarantee visible: this file is testable precisely
+test('calc.js reaches for no browser-only globals', () => {
+  // The vm context is given only APIs that exist in Node as well as a browser
+  // (URL and friends). document, window, localStorage and navigator are absent,
+  // so any use of one throws on load rather than reaching this line. Asserting
+  // it explicitly keeps the guarantee visible: this file is testable precisely
   // because it has no DOM in it.
   assert.equal(typeof Calc.tumblerState, 'function');
   assert.doesNotThrow(() => loadCalc());

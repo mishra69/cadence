@@ -881,18 +881,37 @@ const App = (() => {
   let pendingAction = null;
   let pendingNotificationId = null;
 
+  // Which notification sent us here rides along as `n`, reported once a session
+  // exists so phase 5 can compare notified windows against un-notified ones.
+  const readAction = href => Calc.readAction(href, location.origin);
+
   function captureAction() {
-    const params = new URL(location.href).searchParams;
-    const action = params.get('action');
-    if (['urge', 'relapse', 'sweep', 'morning'].includes(action)) pendingAction = action;
-    // Which notification sent us here. Reported once a session exists, so
-    // phase 5 can compare notified windows against un-notified ones.
-    pendingNotificationId = params.get('n');
+    const { action, notificationId } = readAction(location.href);
+    if (action) pendingAction = action;
+    pendingNotificationId = notificationId;
     // Strip it so a reload — or the app being resumed later — doesn't reopen
     // the sheet out of nowhere.
-    if (action || pendingNotificationId) {
+    if (action || notificationId) {
       history.replaceState(null, '', location.pathname);
     }
+  }
+
+  /**
+   * A notification tapped while the app was already running.
+   *
+   * Safari does not implement WindowClient.navigate(), so the service worker
+   * cannot put `?action=` in front of a live page — it focuses the window and
+   * posts the destination instead. Without this the tap surfaced whatever
+   * screen happened to be open, which is why a daily check-in landed on Home
+   * rather than on the sweep. A cold open still arrives through captureAction.
+   */
+  function receiveAction(url) {
+    const { action, notificationId } = readAction(url);
+    if (action) pendingAction = action;
+    if (notificationId) pendingNotificationId = notificationId;
+    // While locked, the resume path consumes it once the gate is satisfied.
+    // Acting now would put the sheet in front of the lock.
+    if (!Lock.locked) consumePendingAction();
   }
 
   function consumePendingAction() {
@@ -1704,6 +1723,11 @@ const App = (() => {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(err => {
         console.warn('[sw] registration failed', err);
+      });
+      // How a notification tap reaches an app that is already running. Wired
+      // before anything can await, so a tap during a slow boot is not dropped.
+      navigator.serviceWorker.addEventListener('message', e => {
+        if (e.data?.type === 'notification-action') receiveAction(e.data.url);
       });
     }
 

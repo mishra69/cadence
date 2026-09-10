@@ -152,8 +152,31 @@ var Calc = (function () {
     };
   }
 
+  var ACTIONS = ['urge', 'relapse', 'sweep', 'morning'];
+
+  /**
+   * The action and notification id carried by a notification's deep link.
+   *
+   * Reached two ways, which is why it lives here rather than beside either of
+   * them: a cold open parses `location.href`, and a tap on an app that is
+   * already running parses a URL the service worker posts in, because Safari
+   * does not implement WindowClient.navigate(). Both must agree, and an
+   * unrecognised action must come back null rather than be handed to a router
+   * that will silently do nothing with it.
+   */
+  function readAction(href, origin) {
+    var params = new URL(href, origin).searchParams;
+    var action = params.get('action');
+    return {
+      action: ACTIONS.indexOf(action) === -1 ? null : action,
+      notificationId: params.get('n'),
+    };
+  }
+
   return {
     DAY_MS: DAY_MS,
+    ACTIONS: ACTIONS,
+    readAction: readAction,
     HOUR_MS: HOUR_MS,
     SETTLE_MS: SETTLE_MS,
     logicalDate: logicalDate,

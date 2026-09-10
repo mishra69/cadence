@@ -13,10 +13,17 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
+// Platform APIs that exist in both a browser and Node, so using them says
+// nothing about whether the file is DOM-free. Everything genuinely browser-only
+// — document, window, localStorage, navigator — is deliberately left out, so a
+// file that reaches for one throws on load instead of passing here and failing
+// on a phone.
+const SHARED_GLOBALS = { URL, URLSearchParams, console };
+
 /** @returns {object} the `Calc` global, as the page would see it. */
 export function loadCalc() {
   const path = fileURLToPath(new URL('../../frontend/js/calc.js', import.meta.url));
-  const context = vm.createContext({});
+  const context = vm.createContext({ ...SHARED_GLOBALS });
   vm.runInContext(readFileSync(path, 'utf8'), context, { filename: 'calc.js' });
   if (!context.Calc) throw new Error('calc.js did not define a Calc global');
   return context.Calc;
