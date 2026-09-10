@@ -8,6 +8,80 @@ don't leave a trace in a diff.
 
 ---
 
+## 2026-09-09, later — the veil conceded, logic extracted, notifications fixed
+
+Both threads left open by the entry below closed on the same evening, one badly
+and one well.
+
+**The veil lost, and the loss is now written down.** The opacity fix changed
+nothing: the app switcher still shows the real screen. Two implementations were
+tried — toggling `display`, then holding the veil on a pre-promoted compositor
+layer and toggling only `opacity`, so raising it cost neither layout nor paint —
+and neither moved. The handlers fire; that much is verified. What cannot be
+forced is a *paint* before iOS takes the snapshot, and iOS captures the last
+frame it painted, which is the one from before the handler ran. A native app
+gets `applicationWillResignActive` and a guaranteed render opportunity. A web
+app has no equivalent.
+
+The instinct was to rip out everything added for it. That would have been wrong:
+the veil has three jobs and only one failed. It still blanks the cold start
+before the lock screen paints, and still covers the moment the app re-locks on
+resume. Ripping it out would have regressed two working protections to fix none.
+What went instead was the speculation — back to `display: none`, and the
+permanent full-screen `will-change: opacity` layer with it, which cost memory
+for nothing.
+
+What was added is the truth, in the places someone would look. §0 marks the
+requirement **NOT MET** rather than continuing to list it as a feature, §4.1
+carries the amendment and an instruction not to spend more time here, and
+`onHide()` says in the code that its presence is not evidence the requirement is
+met. The failure mode being guarded against is a future reader — most likely me
+— seeing a veil in the source and a requirement in the plan and assuming it is
+handled. **The app-switcher thumbnail is public.** The lock still protects the
+contents, which need the app opened. That was judged an acceptable residual risk
+for a single-user app.
+
+**The extraction went in.** `calc.js` now holds the deciding and the render
+functions keep the drawing: the logical-day shift, the hour stepper and its
+clamps, the tumbler state, the scrub's touch-to-index mapping, the ribbon
+wording. 165 tests became 185.
+
+It is a plain script with one global rather than a module, deliberately. A module
+imports its neighbours relatively, and a relative import cannot carry the `?v=`
+stamp the service worker precaches by — the trap `deploy.conf` already documents
+for webpush-edge. Tests reach it through a `vm` context instead, which has a
+second benefit: anything reaching for `document` throws on load rather than
+passing against a shim production does not have. Two things that cost time and
+are worth remembering: the vm realm has its own `Object.prototype`, so
+`deepStrictEqual` fails on prototype identity alone; and the first guard was
+*too* tight — `URL` is not a DOM API, it exists in Node as much as in a browser,
+and the harness had to name it explicitly.
+
+**And a real bug surfaced, by using the app rather than by testing it.** A daily
+check-in notification tapped while the app was already running landed on Home
+instead of the sweep. Not a regression — that path was untouched since the first
+commit. `notificationclick` focused the existing window and then called
+`WindowClient.navigate()`, which **Safari does not implement**. So on the one
+platform this feature exists for, focusing was all that happened: the
+`?action=sweep` never reached a live page. It worked only from a cold start,
+which takes the `clients.openWindow()` branch — hence the intermittency, and
+hence `opened_at` being recorded for seven of nine notifications rather than
+all of them. Those seven were cold opens. The service worker now posts the
+destination to the focused client instead.
+
+**On testing, concluded.** Going back through every UI bug this project has had:
+the ones caught by eye — a ramp escalating the wrong way, a ragged ribbon, a
+stranded tab bar, contrast too low — would have been caught by nothing, because
+they were judgements or iOS-only. The ones a test would have caught were all
+arithmetic, and all of them are now reachable from `node:test` with no browser.
+Playwright stays deferred: for an app behind Google sign-in, a device lock and
+passkeys, the setup cost is a day, and the class of bug it adds coverage for is
+the class already covered. This bug is the counter-example worth holding onto
+though — it was found by tapping a notification, and no unit test would have
+suggested `WindowClient.navigate()` was missing.
+
+---
+
 ## 2026-09-06 – 09-09 — logging accuracy, the tumbler, and the veil
 
 The week the open questions got answered, mostly in our favour.
