@@ -173,10 +173,26 @@ var Calc = (function () {
     };
   }
 
+  /**
+   * Whether a filed notification tap is too old to act on.
+   *
+   * A tap the service worker filed is collected when the page next becomes
+   * visible, which is usually seconds later but is not guaranteed to be — if
+   * the tap failed to raise the app at all, the entry waits for the next
+   * launch. That wait is wanted up to a point and unwanted past it, and the
+   * point is a judgement; what is testable is that a clock which has gone
+   * backwards reads as fresh rather than as impossibly stale.
+   */
+  function inboxIsStale(filedAt, now, ttlMs) {
+    if (filedAt == null) return true;
+    return now - filedAt > ttlMs;
+  }
+
   return {
     DAY_MS: DAY_MS,
     ACTIONS: ACTIONS,
     readAction: readAction,
+    inboxIsStale: inboxIsStale,
     HOUR_MS: HOUR_MS,
     SETTLE_MS: SETTLE_MS,
     logicalDate: logicalDate,

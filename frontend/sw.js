@@ -55,10 +55,20 @@ self.addEventListener('install', e => {
   );
 });
 
+// Where a notification tap is left for the page to pick up. Separate from the
+// versioned shell cache so a deploy landing between the tap and the resume
+// doesn't discard the action — hence the exclusion in the activate cleanup.
+//
+// The key is a path the app never requests. That matters: the fetch handler
+// below uses caches.match(request), which searches *every* cache, so a key that
+// collided with a real URL would start serving this JSON as that asset.
+const INBOX = 'cadence-inbox';
+const INBOX_KEY = '/__notification-action';
+
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE && k !== INBOX).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -104,17 +114,26 @@ self.addEventListener('notificationclick', e => {
   e.notification.close();
   const target = e.notification.data?.url || '/';
   e.waitUntil((async () => {
+    // Filed first, unconditionally, because every way of *handing* the action
+    // to a running page has turned out to be unreliable on iOS and none of them
+    // report failure. WindowClient.navigate() is not implemented at all.
+    // postMessage is implemented, but the page may be frozen, and matchAll has
+    // been seen returning nothing for a backgrounded PWA — in which case the
+    // openWindow() fallback below just refocuses the existing instance without
+    // applying the URL, which is precisely the bug this is fixing.
+    //
+    // So the tap is left somewhere the page can find it on its own, and the
+    // page looks whenever it becomes visible. The paths below are the fast
+    // ones; this is the one that actually has to work.
+    await fileAction(target);
+
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     // Focus an existing window rather than opening a second copy of the app.
     for (const c of all) {
       if (new URL(c.url).origin === location.origin) {
         await c.focus();
-        // NOT WindowClient.navigate(): Safari does not implement it, so on the
-        // one platform this feature exists for, focusing was the only thing
-        // that happened. The ?action= never reached a page that was already
-        // running, and a check-in tap surfaced whatever screen was already
-        // open — Home, usually. postMessage is supported everywhere and does
-        // not reload the page out from under an in-progress log.
+        // Does not reload the page out from under an in-progress log, which a
+        // navigation would. Delivery clears the inbox on the page side.
         c.postMessage({ type: 'notification-action', url: target });
         return;
       }
@@ -123,6 +142,17 @@ self.addEventListener('notificationclick', e => {
     await self.clients.openWindow(target);
   })());
 });
+
+async function fileAction(url) {
+  try {
+    const cache = await caches.open(INBOX);
+    await cache.put(INBOX_KEY, new Response(JSON.stringify({ url, at: Date.now() }), {
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (err) {
+    console.warn('[sw] could not file the notification action', err);
+  }
+}
 
 // Push services rotate endpoints. Without this the subscription silently dies
 // and notifications just stop, with nothing user-visible to explain why. The

@@ -893,6 +893,10 @@ const App = (() => {
     // the sheet out of nowhere.
     if (action || notificationId) {
       history.replaceState(null, '', location.pathname);
+      // A cold open carries the action in the URL, so the copy the worker filed
+      // has already done its job. Left behind it would reopen this same sheet
+      // on the next resume.
+      clearInbox();
     }
   }
 
@@ -906,12 +910,53 @@ const App = (() => {
    * rather than on the sweep. A cold open still arrives through captureAction.
    */
   function receiveAction(url) {
+    // However this arrived, it is in hand now — so drop the copy the service
+    // worker filed, or the next resume would open the sheet a second time.
+    clearInbox();
     const { action, notificationId } = readAction(url);
     if (action) pendingAction = action;
     if (notificationId) pendingNotificationId = notificationId;
     // While locked, the resume path consumes it once the gate is satisfied.
     // Acting now would put the sheet in front of the lock.
     if (!Lock.locked) consumePendingAction();
+  }
+
+  // ── The notification inbox ──────────────────────────────────────────────────
+  //
+  // The service worker cannot reliably hand a tap to a page that is already
+  // running on iOS, so it writes the destination to a cache entry instead and
+  // the page collects it — on boot, and every time it becomes visible. That
+  // covers the case postMessage misses: the app resumes to whatever screen it
+  // was on, and a moment later the check-in it was told to open appears.
+  const INBOX = 'cadence-inbox';
+  const INBOX_KEY = '/__notification-action';
+
+  // Old enough to be someone opening the app on purpose rather than a tap still
+  // in flight. Generous, because a tap that failed to raise the app is *still*
+  // best answered by opening the check-in the next time it is launched — what
+  // this rules out is a tap from hours ago hijacking an unrelated visit.
+  const INBOX_TTL_MS = 10 * 60_000;
+
+  function clearInbox() {
+    if (!('caches' in window)) return;
+    caches.open(INBOX).then(c => c.delete(INBOX_KEY)).catch(() => {});
+  }
+
+  async function drainInbox() {
+    if (!('caches' in window)) return;
+    try {
+      const cache = await caches.open(INBOX);
+      const res = await cache.match(INBOX_KEY);
+      if (!res) return;
+      // Deleted before it is acted on, not after: a failure part-way through
+      // must not leave an entry that reopens the sheet on every resume.
+      await cache.delete(INBOX_KEY);
+      const { url, at } = await res.json();
+      if (Calc.inboxIsStale(at, Date.now(), INBOX_TTL_MS)) return;
+      receiveAction(url);
+    } catch (err) {
+      console.warn('[inbox] could not read the pending action', err);
+    }
   }
 
   function consumePendingAction() {
@@ -1729,6 +1774,13 @@ const App = (() => {
       navigator.serviceWorker.addEventListener('message', e => {
         if (e.data?.type === 'notification-action') receiveAction(e.data.url);
       });
+      // And the path that has to work when that one doesn't. Every resume, not
+      // just this one: the app is usually already running when the tap happens,
+      // so becoming visible is the signal, not booting.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') drainInbox();
+      });
+      drainInbox();
     }
 
     // The veil is only ever lowered by show(). If a future change re-introduces

@@ -196,6 +196,23 @@ test('every action the push sender emits is one the client accepts', () => {
   }
 });
 
+test('a filed tap is collected while fresh and ignored once stale', () => {
+  const TTL = 10 * 60_000;
+  const filed = at(2026, 9, 13, 21, 0);
+  assert.equal(Calc.inboxIsStale(filed, filed, TTL), false, 'collected immediately');
+  assert.equal(Calc.inboxIsStale(filed, filed + TTL, TTL), false, 'the boundary is still fresh');
+  assert.equal(Calc.inboxIsStale(filed, filed + TTL + 1, TTL), true);
+  // A tap that failed to raise the app is still worth answering on the next
+  // launch, which is the whole reason the window is minutes rather than seconds.
+  assert.equal(Calc.inboxIsStale(filed, filed + 4 * 60_000, TTL), false);
+  // A device whose clock moved backwards must not read as impossibly stale and
+  // silently swallow the tap.
+  assert.equal(Calc.inboxIsStale(filed, filed - HOUR, TTL), false);
+  // Nothing to act on is not the same as something too old, but both refuse.
+  assert.equal(Calc.inboxIsStale(null, Date.now(), TTL), true);
+  assert.equal(Calc.inboxIsStale(undefined, Date.now(), TTL), true);
+});
+
 // ── The loader itself ───────────────────────────────────────────────────────
 
 test('calc.js reaches for no browser-only globals', () => {
