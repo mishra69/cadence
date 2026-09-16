@@ -8,6 +8,68 @@ don't leave a trace in a diff.
 
 ---
 
+## 2026-09-15 — the notification fix that actually had to work
+
+Three items came in off the phone. One was already done, one was a genuine bug
+on its second attempt, and one turned out to be a design collision rather than
+the labelling question it arrived as.
+
+**The notification tap, take two.** The postMessage fix was right about the
+cause and still did not work. `WindowClient.navigate()` really is missing from
+Safari — that part held up — but replacing it with a message to the focused
+client only moved the failure one step. On iOS the page may be frozen when the
+message is posted, and `matchAll` has been seen returning nothing at all for a
+backgrounded PWA, in which case the `openWindow()` fallback just refocuses the
+running instance without applying the URL. Three different silent failures, all
+producing the identical symptom: the tap lands on whatever screen was open.
+
+The lesson is the one worth keeping. Every mechanism for *handing* an action to
+a running page is a delivery promise that iOS declines to keep and declines to
+report. So stop handing it over. `notificationclick` now files the destination
+in its own cache before it does anything else, and the page collects it whenever
+it becomes visible. The handoff still runs, because it is faster when it works;
+it is no longer what the feature depends on. Pull rather than push, and the
+question stops being whether the message arrived.
+
+Four details did the real work. The inbox is excluded from the `activate`
+cleanup, or a deploy landing between the tap and the resume would discard it.
+The entry is deleted *before* it is acted on, not after, so a failure part-way
+through cannot reopen the sheet on every resume from then on. Both the
+cold-open and postMessage paths clear it, so one tap cannot fire twice. And the
+key is a path the app never requests, because the fetch handler's
+`caches.match(request)` searches every cache — a key that collided with a real
+URL would start serving this JSON as that asset.
+
+This one was verified in a browser rather than reasoned about, which after two
+failed attempts was the least it deserved: the cache round-trips between worker
+and page scope, both sides normalise the key to the same absolute URL, and the
+activate filter demonstrably keeps the inbox while dropping a stale shell.
+
+**The tumbler was already right.** Asked whether anything ticks: no, and nothing
+ever did after the 30-second timer came out. `renderTumbler()` is reached only
+from `renderStats()`, which runs on tab switch and on resume, and
+`Calc.tumblerState` is pure arithmetic over the last relapse. Snapshot on load
+is the entire implementation. Worth recording as confirmed rather than leaving
+it to be re-derived.
+
+**The two check-ins are the same event wearing two names.** The observation was
+that morning and evening look identical in History. They do, and the reason goes
+deeper than the label. Both write `kind: 'daily'`. The sweep asks the morning
+question a second time at night — `openSweep()` hardcodes `morning_wood: null`
+and never reads back what the morning recorded, though `/api/sweep` returns it —
+which is a night-time recall of a morning fact, the exact problem the morning
+prompt exists to avoid.
+
+And the part nobody was looking for: answering the morning question *confirms
+the whole day*. `confirmed_days` counts distinct logical days carrying a `daily`
+row, and the ribbon's confirmed ring keys off the same test, so one tap at 08:00
+marks a day confirmed before it has happened and the nightly sweep then opens
+saying "Done". A coverage metric counting days that were never reviewed is worse
+than no metric, because it reads as trustworthy. Fixing it next, deliberately
+after this deploy rather than folded into it.
+
+---
+
 ## 2026-09-09, later — the veil conceded, logic extracted, notifications fixed
 
 Both threads left open by the entry below closed on the same evening, one badly
