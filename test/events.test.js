@@ -237,16 +237,40 @@ test('the day boundary setting reaches the write path', () => {
   assert.equal(normalizeEvent(urge({ ts_utc: at3am }), { ...S, day_boundary_hour: 3 }, NOW + DAY_MS).logical_day, '2026-06-16');
 });
 
-test('morning_wood is recorded on the daily check-in only', () => {
+test('morning_wood is recorded on a morning check-in', () => {
   const ev = normalizeEvent(
-    { id: uuid(), kind: 'daily', ts_utc: NOW, tz: IST, morning_wood: 0 }, S, NOW);
+    { id: uuid(), kind: 'morning_check', ts_utc: NOW, tz: IST, morning_wood: 0 }, S, NOW);
   assert.equal(ev.morning_wood, 0, '0 is a real answer, not a missing one');
+
+  // Still accepted on `daily`, which is where every reading written before the
+  // two kinds were split lives. Rejecting it would also turn a stale cached
+  // client into a 400 for no gain — nothing reads by kind any more.
+  assert.equal(
+    normalizeEvent({ id: uuid(), kind: 'daily', ts_utc: NOW, tz: IST, morning_wood: 3 }, S, NOW).morning_wood,
+    3);
 
   for (const kind of ['urge', 'relapse', 'note']) {
     assert.throws(
       () => normalizeEvent({ id: uuid(), kind, ts_utc: NOW, tz: IST, morning_wood: 1 }, S, NOW),
       ValidationError, kind);
   }
+});
+
+test('a morning check-in is not a confirmation of the day', () => {
+  // The whole point of the split. Answering one question at 08:00 used to write
+  // `daily`, which is what coverage counts — so a day was marked reviewed
+  // before it had happened. Both are still real events; only one confirms.
+  const morning = normalizeEvent(
+    { id: uuid(), kind: 'morning_check', ts_utc: NOW, tz: IST, morning_wood: 3 }, S, NOW);
+  assert.equal(morning.kind, 'morning_check');
+  assert.notEqual(morning.kind, 'daily');
+
+  // And it carries `recalled` like any other event, which is how a reading
+  // supplied at the nightly sweep stays distinguishable from one given at 8am.
+  const late = normalizeEvent(
+    { id: uuid(), kind: 'morning_check', ts_utc: NOW, tz: IST, morning_wood: 2, recalled: true },
+    S, NOW);
+  assert.equal(late.recalled, 1);
 });
 
 test('morning_wood is none / mild / strong / don\'t recall, and omitted stays null', () => {

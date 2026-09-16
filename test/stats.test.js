@@ -81,6 +81,24 @@ test('confirmed days counts distinct daily check-ins inside the streak window', 
   assert.ok(s.confirmed_days <= s.coverage_days);
 });
 
+test('a morning check-in does not confirm the day', async () => {
+  // The bug the two kinds were split to fix: answering one question at 08:00
+  // wrote `daily` and so marked the whole day reviewed before it had happened.
+  // A coverage number that overstates is worse than none — it reads as
+  // trustworthy.
+  const db = makeDb();
+  await add(db, 'relapse', NOW - 5 * DAY_MS);
+  for (let d = 4; d >= 1; d--) await add(db, 'morning_check', NOW - d * DAY_MS, { morning_wood: 3 });
+
+  const s = await getStats(db, U, IST, S, NOW);
+  assert.equal(s.confirmed_days, 0, 'four mornings answered, no day reviewed');
+
+  // Reviewing two of those days is what moves the number.
+  await add(db, 'daily', NOW - 4 * DAY_MS);
+  await add(db, 'daily', NOW - 3 * DAY_MS);
+  assert.equal((await getStats(db, U, IST, S, NOW)).confirmed_days, 2);
+});
+
 test('confirmed days never exceeds the days it is reported against', async () => {
   const db = makeDb();
   await add(db, 'relapse', NOW - 5 * DAY_MS);

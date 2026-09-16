@@ -222,12 +222,18 @@ const App = (() => {
       const kind = document.createElement('div');
       kind.className = `ev-kind ${ev.kind}`;
       kind.textContent = {
-        urge: 'Urge', relapse: 'Relapse', daily: 'Day confirmed', note: 'Note',
+        urge: 'Urge', relapse: 'Relapse', daily: 'Day confirmed',
+        morning_check: 'Morning check-in', note: 'Note',
       }[ev.kind] || ev.kind;
       if (ev.kind === 'urge' && ev.intensity != null) kind.textContent += ` · ${ev.intensity}/5`;
       if (ev.kind === 'relapse' && ev.satisfaction != null) kind.textContent += ` · worth ${ev.satisfaction}/5`;
-      if (ev.kind === 'daily' && ev.morning_wood != null) {
-        kind.textContent += ` · morning ${MORNING_LABELS[ev.morning_wood]}`;
+      // Keyed off the field, not the kind, so readings on rows written before
+      // the split still show. The word "morning" is only added where the label
+      // hasn't already said it.
+      if (ev.morning_wood != null) {
+        kind.textContent += ev.kind === 'morning_check'
+          ? ` · ${MORNING_LABELS[ev.morning_wood]}`
+          : ` · morning ${MORNING_LABELS[ev.morning_wood]}`;
       }
       body.append(kind);
 
@@ -731,7 +737,11 @@ const App = (() => {
       return show('home');
     }
 
-    sweep = { day: data.logical_day, morning_wood: null };
+    // `answered` is the morning's own reading, if it was given. The chips are
+    // only offered when it is missing — asking a second time at 21:00 would be
+    // a night-time recall of a morning fact, which is the error the morning
+    // prompt exists to prevent.
+    sweep = { day: data.logical_day, morning_wood: null, answered: data.morning_wood ?? null };
     show('sweep');
     renderMorning();
 
@@ -788,6 +798,22 @@ const App = (() => {
   function renderMorning() {
     const wrap = $('morning-chips');
     wrap.innerHTML = '';
+
+    // Already answered this morning: report it rather than re-open it. Editing
+    // it from here would invite exactly the retrospective revision the split
+    // was made to avoid — History is where a mis-tap gets deleted.
+    const answered = sweep?.answered != null;
+    // "optional" describes a question being asked. Once it has been answered
+    // there is no question here to decline.
+    $('morning-optional').hidden = answered;
+    if (answered) {
+      const said = document.createElement('p');
+      said.className = 'morning-said';
+      said.textContent = `Answered this morning: ${MORNING_LABELS[sweep.answered]}.`;
+      wrap.append(said);
+      return;
+    }
+
     for (const value of MORNING_OPTIONS) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -806,11 +832,11 @@ const App = (() => {
   /**
    * The morning prompt: one question, then done.
    *
-   * It writes a `daily` event, the same kind the nightly sweep confirms with, so
-   * answering here also confirms the day. Answering both can leave two `daily`
-   * rows on one logical day — harmless rather than upserted: coverage counts
-   * DISTINCT logical_day so it cannot double-count, and the morning reading is
-   * found by its non-null field rather than by being the only row.
+   * It writes a `morning_check`, which deliberately does not confirm the day.
+   * It used to write `daily` — the same kind the sweep confirms with — so one
+   * tap at 08:00 marked the whole day reviewed before it had happened, and
+   * `confirmed_days` counted days nobody had looked at. A coverage number that
+   * overstates is worse than none, because it reads as trustworthy.
    */
   async function openMorning() {
     show('morning');
@@ -822,7 +848,7 @@ const App = (() => {
       b.textContent = MORNING_LABELS[value];
       b.onclick = async () => {
         for (const x of wrap.querySelectorAll('button')) x.disabled = true;
-        await API.log({ kind: 'daily', morning_wood: value });
+        await API.log({ kind: 'morning_check', morning_wood: value });
         $('done-text').textContent = 'Noted.';
         show('done');
         doneTimer = setTimeout(() => {
@@ -851,12 +877,21 @@ const App = (() => {
     btn.disabled = true;
 
     const note = $('sweep-note').value.trim();
+
+    // A morning missed at the time and supplied here is still a morning
+    // reading, so it goes on its own `morning_check` rather than riding on the
+    // confirmation — one kind means one thing. Flagged `recalled` for the same
+    // reason a backfilled urge is: answered hours later, from memory, and it
+    // should not be pooled with the live ones without saying so.
+    if (sweep?.morning_wood != null) {
+      await API.log({ kind: 'morning_check', morning_wood: sweep.morning_wood, recalled: true });
+    }
+
     // The check-in is what `confirmed_days` counts; the note rides on it rather
     // than becoming a second event for the same moment.
     await API.log({
       kind: 'daily',
       ...(note ? { note } : {}),
-      ...(sweep?.morning_wood != null ? { morning_wood: sweep.morning_wood } : {}),
     });
 
     $('done-text').textContent = 'Day confirmed.';

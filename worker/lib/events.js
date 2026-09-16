@@ -5,7 +5,20 @@
 // that half-succeeds must be safe to repeat.
 import { derive, isValidTimeZone, DAY_MS } from './time.js';
 
-export const KINDS = ['urge', 'relapse', 'daily', 'note'];
+// `daily` is the day being *reviewed* — the nightly sweep, or the confirm
+// button on Home. It is what coverage counts.
+//
+// `morning_check` is the morning reading and deliberately not a `daily`. Both
+// used to write `daily`, which meant answering one question at 08:00 marked the
+// whole day confirmed before it had happened, and left the two rituals
+// indistinguishable in History. Separating them is what makes `confirmed_days`
+// mean what it says.
+export const KINDS = ['urge', 'relapse', 'daily', 'morning_check', 'note'];
+
+// Kinds that may carry a morning reading. `daily` is here for rows written
+// before the split — the client no longer puts one there — and accepting it
+// costs nothing, where rejecting would turn a stale cached build into a 400.
+const MORNING_KINDS = ['daily', 'morning_check'];
 
 // Fixed vocabulary. Free-text tags would fragment ('tired' vs 'sleepy') and
 // make the phase 4 contrast between urge and relapse distributions meaningless.
@@ -99,10 +112,8 @@ export function normalizeEvent(raw, settings, now = Date.now()) {
     }
   }
 
-  // Recorded on the daily check-in, not as its own event: it describes the day
-  // rather than a moment.
-  //
-  //   0 = no, 1 = yes, 2 = don't recall
+  // Carried by its own `morning_check` event: it describes the morning rather
+  // than a moment inside it, and it is not a review of the day.
   //
   // Not a count. "Twice or three times" asks for a precision nobody actually
   // has hours later, and an unreliable number is worse than a reliable bit.
@@ -122,7 +133,9 @@ export function normalizeEvent(raw, settings, now = Date.now()) {
   // finding.
   let morning_wood = null;
   if (raw.morning_wood != null) {
-    if (kind !== 'daily') throw new ValidationError('morning_wood is only valid on a daily check-in');
+    if (!MORNING_KINDS.includes(kind)) {
+      throw new ValidationError('morning_wood is only valid on a morning check-in');
+    }
     morning_wood = Number(raw.morning_wood);
     if (!Number.isInteger(morning_wood) || morning_wood < 0 || morning_wood > 4) {
       throw new ValidationError(

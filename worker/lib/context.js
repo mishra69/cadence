@@ -206,8 +206,12 @@ export function buildContext({ mode, stats, events, term = null, includeNotes = 
   // 0 none · 1 yes (legacy) · 2 mild · 3 strong · 4 don't recall. Only the first
   // four are a rate; a "don't recall" is an answer about memory, not about the
   // morning, and folding it in either direction would invent a trend.
+  //
+  // Found by the field rather than by the kind: readings live on `morning_check`
+  // now and on `daily` for rows written before the two were separated, and an
+  // answered morning is an answered morning whichever screen recorded it.
   const recalled_mornings = events.filter(
-    e => e.kind === 'daily' && e.morning_wood != null && e.morning_wood <= 3);
+    e => e.morning_wood != null && e.morning_wood <= 3);
   if (recalled_mornings.length >= 3) {
     const present = recalled_mornings.filter(e => e.morning_wood > 0);
     lines.push('', `Morning erections: ${present.length} of the last ${recalled_mornings.length} mornings I could remember.`);

@@ -65,6 +65,32 @@ test('the 30-day series appears later than the 7-day one', () => {
 });
 
 // The other half of the same hazard: a week you did not log produces a genuine
+test('a morning check-in logs the day without confirming it', () => {
+  // Two different questions, and they must not be answered by the same event.
+  // "Was this day logged at all" is what coverage asks, and a morning answer is
+  // a yes. "Was this day reviewed" is what the ribbon's ring asks, and it is
+  // not — a day is reviewed at the sweep, not at 8am before it has happened.
+  const day = dayRibbon({
+    events: [ev(0, 'morning_check')], tz: IST, settings: S, now: NOW, days: 14,
+  }).find(c => !c.future && c.events > 0);
+
+  assert.equal(day.events, 1, 'the day has something logged against it');
+  assert.equal(day.confirmed, false, 'but it was never reviewed');
+  assert.equal(day.state, 'clean', 'and no slip, so it still reads as clean');
+
+  const reviewed = dayRibbon({
+    events: [ev(0, 'morning_check'), ev(0, 'daily')], tz: IST, settings: S, now: NOW, days: 14,
+  }).find(c => !c.future && c.events > 0);
+  assert.equal(reviewed.confirmed, true);
+
+  // Coverage is deliberately kind-agnostic, so the morning still counts there.
+  const s = rollingRelapses({
+    events: [ev(30, 'daily'), ...[0, 1, 2, 3, 4, 5, 6].map(d => ev(d, 'morning_check'))],
+    tz: IST, settings: S, now: NOW, days: 30,
+  });
+  assert.equal(s[s.length - 1].coverage_7d, 1, 'a week of mornings is still a week logged');
+});
+
 // zero, indistinguishable from a good week unless coverage travels with it.
 test('coverage reports how much of the window was actually logged', () => {
   const events = [

@@ -857,6 +857,11 @@ textarea:focus, .pin-input:focus, select:focus {
 
 /* ── Misc ────────────────────────────────────────────────────────────────── */
 
+/* The morning's own answer, reported back in the sweep rather than re-asked.
+   Deliberately not chip-shaped: nothing here is tappable, and a control that
+   looks editable would invite revising a morning fact at 21:00. */
+.morning-said { color: var(--text-dim); font-size: 14px; margin: 2px 0 0; }
+
 .hint { color: var(--text-faint); font-size: 13px; margin: 8px 0; }
 .hint code { font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 .error { color: var(--warm); font-size: 14px; }

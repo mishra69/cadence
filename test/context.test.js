@@ -141,15 +141,28 @@ test('morning readings appear once there are enough to mean anything', () => {
   assert.match(build({ events: enough }), /Morning erections: 3 of the last 4 mornings/);
 });
 
+test('readings are found by the field, across both kinds that carry one', () => {
+  // Rows written before the split live on `daily`; new ones are their own
+  // `morning_check`. Filtering by kind would silently drop half the history on
+  // the day of the change, and the rate would move for no reason in the data.
+  const mixed = [...EVENTS,
+    { kind: 'daily', ts_utc: ago(1), morning_wood: 1, context: [] },          // legacy
+    { kind: 'daily', ts_utc: ago(2), morning_wood: 0, context: [] },          // legacy
+    { kind: 'morning_check', ts_utc: ago(3), morning_wood: 3, context: [] },
+    { kind: 'morning_check', ts_utc: ago(4), morning_wood: 0, context: [] },
+  ];
+  assert.match(build({ events: mixed }), /Morning erections: 2 of the last 4 mornings/);
+});
+
 test('a forgotten morning is excluded, not counted as a no', () => {
   // "Don't recall" is an answer about memory, not about the morning. Folding it
   // in either direction would invent a trend out of forgetfulness.
   const events = [...EVENTS,
-    { kind: 'daily', ts_utc: ago(1), morning_wood: 3, context: [] },
-    { kind: 'daily', ts_utc: ago(2), morning_wood: 2, context: [] },
-    { kind: 'daily', ts_utc: ago(3), morning_wood: 0, context: [] },
-    { kind: 'daily', ts_utc: ago(4), morning_wood: 4, context: [] },
-    { kind: 'daily', ts_utc: ago(5), morning_wood: 4, context: [] },
+    { kind: 'morning_check', ts_utc: ago(1), morning_wood: 3, context: [] },
+    { kind: 'morning_check', ts_utc: ago(2), morning_wood: 2, context: [] },
+    { kind: 'morning_check', ts_utc: ago(3), morning_wood: 0, context: [] },
+    { kind: 'morning_check', ts_utc: ago(4), morning_wood: 4, context: [] },
+    { kind: 'morning_check', ts_utc: ago(5), morning_wood: 4, context: [] },
   ];
   assert.match(build({ events }), /Morning erections: 2 of the last 3 mornings I could remember\./);
 });

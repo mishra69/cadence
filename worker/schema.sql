@@ -5,7 +5,11 @@
 CREATE TABLE IF NOT EXISTS events (
   id           TEXT PRIMARY KEY,      -- client-generated UUID → idempotent retries
   user_id      TEXT NOT NULL,
-  kind         TEXT NOT NULL,         -- 'urge' | 'relapse' | 'daily' | 'note'
+  kind         TEXT NOT NULL,         -- 'urge' | 'relapse' | 'daily' | 'morning_check' | 'note'
+                                      -- 'daily' is the day reviewed (sweep or the
+                                      -- confirm button) and is what coverage counts.
+                                      -- 'morning_check' is the morning reading and
+                                      -- deliberately does NOT confirm a day.
 
   -- source of truth
   ts_utc       INTEGER NOT NULL,      -- epoch ms — when it happened
@@ -23,8 +27,9 @@ CREATE TABLE IF NOT EXISTS events (
   context      TEXT,                  -- JSON array: ['alone','in_bed','phone','tired','bored','stressed']
                                       -- recorded on BOTH urge and relapse events — comparing the
                                       -- two distributions is what replaces per-urge outcome
-  morning_wood INTEGER,               -- 'daily' only. A property of the day rather
-                                      -- than a moment, so it lives on the check-in.
+  morning_wood INTEGER,               -- 'morning_check' (and 'daily' on rows written
+                                      -- before the two were split). A property of the
+                                      -- morning rather than a moment inside it.
                                       -- 0 none · 2 mild · 3 strong · 4 don't recall.
                                       -- 1 is legacy "yes", from when the question was
                                       -- binary; never written again. See events.js.
