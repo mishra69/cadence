@@ -52,7 +52,8 @@ from `renderStats()`, which runs on tab switch and on resume, and
 is the entire implementation. Worth recording as confirmed rather than leaving
 it to be re-derived.
 
-**The two check-ins are the same event wearing two names.** The observation was
+**The two check-ins are the same event wearing two names — and now they are
+not.** The observation was
 that morning and evening look identical in History. They do, and the reason goes
 deeper than the label. Both write `kind: 'daily'`. The sweep asks the morning
 question a second time at night — `openSweep()` hardcodes `morning_wood: null`
@@ -65,8 +66,41 @@ the whole day*. `confirmed_days` counts distinct logical days carrying a `daily`
 row, and the ribbon's confirmed ring keys off the same test, so one tap at 08:00
 marks a day confirmed before it has happened and the nightly sweep then opens
 saying "Done". A coverage metric counting days that were never reviewed is worse
-than no metric, because it reads as trustworthy. Fixing it next, deliberately
-after this deploy rather than folded into it.
+than no metric, because it reads as trustworthy.
+
+`morning_check` is now its own kind. `daily` means the day was *reviewed* and is
+what coverage counts; a morning reading confirms nothing. The line that took the
+most thought was where *not* to draw it: `coverage_7d` stays kind-agnostic,
+because a morning answer genuinely is the day being logged. Only the ring and
+`confirmed_days` narrow. Two questions that look alike — "was this day logged"
+and "was this day reviewed" — and the whole bug was one event answering both.
+
+The sweep now reports what the morning said rather than re-asking, and
+deliberately does not let it be edited there: revising a morning fact at 21:00
+is the error being designed out, and History is already where a mis-tap gets
+deleted. A morning missed at the time and supplied at the sweep writes its own
+`morning_check` flagged `recalled`, the same treatment a backfilled urge gets
+and for the same reason. Readers find readings by the *field* rather than the
+kind, so rows written before the split still count — filtering by kind would
+have silently halved the history on the day of the change.
+
+**And the migration was the part worth getting right.** Nine old `daily` rows
+were clearly morning answers: a reading, no note, a 9–11am local hour. The
+tempting move was to leave history alone — it is never wrong to not rewrite
+data. It would have been wrong here. Every week before today would have stayed
+overstated while every week after was correct, so a trend line crossing today
+would show a decline that never happened. That is a worse lie than the one being
+fixed.
+
+So they were migrated, narrowly: `confirmed_days` 18 → 13, which is the true
+count — five days had been confirmed by a morning tap alone and never reviewed.
+Two ambiguous rows (one at 14:00, one at 21:00 carrying a reading) were left as
+`daily`, erring toward keeping a day confirmed rather than deleting one on a
+guess. The rollback file was generated *before* the UPDATE and names the nine
+ids explicitly rather than re-running the predicate — after the migration the
+predicate selects nothing, so a predicate-based rollback would be a no-op that
+looked like a success. Verified after: nine rows moved, seventeen readings still
+seventeen.
 
 ---
 
