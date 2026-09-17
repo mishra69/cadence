@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cadence — viz harness</title>
+
+<!--
+  A bench for the charts, outside the app.
+
+  Progress sits behind Google sign-in, a device lock and a passkey, which makes
+  the one screen with all the drawing on it the most expensive screen to look
+  at. This loads charts.js and styles.css directly — the real files, not copies
+  — against synthetic data, so a colour ramp, a tooltip clamp or a layout
+  overlap can be checked in seconds.
+
+  Deliberately NOT under frontend/: that directory is the deployed asset bundle
+  (worker/wrangler.toml -> assets.directory), so a file placed there ships to
+  production and gets precached by the service worker.
+
+    npm run viz      # then open the URL it prints
+
+  What it is not: a test. Nothing here asserts. It renders the cases that are
+  awkward to reach by hand — an empty series, a history too short for the 30-day
+  average, gaps, thinly-logged stretches, multi-slip cells — so that looking is
+  cheap. The arithmetic behind these shapes is tested in test/calc.test.js and
+  test/series.test.js, where no browser is involved.
+-->
+
+<link rel="stylesheet" href="../frontend/css/styles.css" />
+<style>
+  body { background: var(--bg); margin: 0; padding: 20px; }
+
+  /* The default is a phone column, because that is the only width the app is
+     ever used at and nearly every layout bug here has been a width bug. */
+  #stage { width: 390px; margin: 0 auto; transition: width 0.15s ease; }
+
+  .bench-bar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    padding: 10px 0 14px; margin-bottom: 8px;
+    background: var(--bg); border-bottom: 1px solid var(--line);
+  }
+  .bench-bar button {
+    font: inherit; font-size: 12px; padding: 4px 10px;
+    color: var(--text-dim); background: var(--surface-2);
+    border: 1px solid var(--line); border-radius: 7px; cursor: pointer;
+  }
+  .bench-bar button[aria-pressed="true"] { color: var(--text); border-color: var(--text-faint); }
+  .bench-bar .bench-label { font-size: 11px; color: var(--text-faint); margin-right: 2px; }
+
+  .case { margin-bottom: 30px; }
+  .case > h2 {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-faint); margin: 0 0 2px;
+  }
+  .case > p { font-size: 11.5px; color: var(--text-faint); margin: 0 0 10px; }
+</style>
+</head>
+<body>
+
+<div class="bench-bar">
+  <span class="bench-label">width</span>
+  <button data-w="320">320</button>
+  <button data-w="390" aria-pressed="true">390</button>
+  <button data-w="430">430</button>
+  <button data-w="700">700</button>
+</div>
+
+<div id="stage"></div>
+
+<script src="../frontend/js/calc.js"></script>
+<script src="../frontend/js/charts.js"></script>
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const DAY = 86_400_000;
+  const iso = ms => new Date(ms).toISOString().slice(0, 10);
+
+  /** A case gets a heading saying what it is for, or it is just a picture. */
+  function bench(title, why, render) {
+    const box = document.createElement('section');
+    box.className = 'case';
+    const h = document.createElement('h2');
+    h.textContent = title;
+    const p = document.createElement('p');
+    p.textContent = why;
+    const host = document.createElement('div');
+    box.append(h, p, host);
+    stage.append(box);
+    render(host);
+  }
+
+  // ── Series shapes ─────────────────────────────────────────────────────────
+  //
+  // Deterministic, not random: a bench you cannot compare against yesterday's
+  // screenshot is only half a bench.
+
+  /**
+   * @param n      days
+   * @param opts.nullHead    leading days with no 7-day rate (history too short)
+   * @param opts.smoothFrom  first day carrying a 30-day average; null for none
+   * @param opts.thin        [from, to) days logged too thinly to trust
+   */
+  function series(n, { nullHead = 0, smoothFrom = 12, thin = null } = {}) {
+    const start = Date.UTC(2026, 6, 16);
+    return Array.from({ length: n }, (_, i) => ({
+      day: iso(start + i * DAY),
+      per_week_7d: i < nullHead ? null : 4 + 2 * Math.sin(i / 2.3) + (i % 7 === 0 ? 1 : 0),
+      per_week_30d: smoothFrom == null || i < smoothFrom ? null : 4.9 + Math.sin(i / 9),
+      coverage_7d: thin && i >= thin[0] && i < thin[1] ? 0.2 : 0.9,
+    }));
+  }
+
+  /** @param opts.futureTail  trailing days that have not happened yet */
+  function ribbonDays(n, { futureTail = 0 } = {}) {
+    const start = Date.UTC(2026, 6, 13);
+    return Array.from({ length: n }, (_, i) => {
+      const future = i >= n - futureTail;
+      const unknown = i < 28;
+      const state = future ? 'pad' : unknown ? 'unknown' : (i % 5 === 0 ? 'clean' : 'relapse');
+      // Both multi-slip steps, since the ramp between them is the thing that
+      // has been got wrong twice and can only be judged by eye.
+      const count = state !== 'relapse' ? 0 : i % 17 === 0 ? 3 : i % 11 === 0 ? 2 : 1;
+      return {
+        day: iso(start + i * DAY), state, count, future, outside: false,
+        confirmed: !future && !unknown && i % 3 === 0,
+        events: state === 'unknown' || future ? 0 : 1,
+      };
+    });
+  }
+
+  // ── The cases ─────────────────────────────────────────────────────────────
+
+  bench('Rolling — both series',
+        'The ordinary view. Scrub it: each value should carry its own swatch, and the resting dot at the right should disappear once a drag starts.',
+        h => Charts.rolling(h, series(63, { nullHead: 5, thin: [21, 26] })));
+
+  bench('Rolling — no 30-day average yet',
+        'Under 30 days of history. The legend must explain the missing series rather than silently dropping it, and the pill must not print a second value.',
+        h => Charts.rolling(h, series(20, { nullHead: 5, smoothFrom: null })));
+
+  bench('Rolling — one point',
+        'The degenerate x scale. A single point is drawn as a dot, and the scrub must land on it from anywhere.',
+        h => Charts.rolling(h, series(8, { nullHead: 7, smoothFrom: null })));
+
+  bench('Rolling — nothing to draw',
+        'Empty state. It should say what it is waiting for, not just that it is empty.',
+        h => Charts.rolling(h, series(4, { nullHead: 4, smoothFrom: null })));
+
+  bench('Ribbon — full grid',
+        'Seven rows, one column per week. Check the top row especially: the tooltip must sit above it, never over it.',
+        h => Charts.ribbon(h, ribbonDays(70)));
+
+  bench('Ribbon — days not yet happened',
+        'The trailing pad. Absent cells are days in the future only — alignment padding is real data and must not read as a gap.',
+        h => Charts.ribbon(h, ribbonDays(70, { futureTail: 4 })));
+
+  bench('Ribbon — nothing logged',
+        'Empty state.',
+        h => Charts.ribbon(h, []));
+
+  // ── Width switch ──────────────────────────────────────────────────────────
+  //
+  // Reloads rather than re-flowing. Both charts measure the column at draw time
+  // — the line's tooltip clamp and the ribbon's cell size — so resizing a drawn
+  // one would show a state the app never produces, since the app only ever
+  // draws into a settled layout. The choice survives the reload so the buttons
+  // still mean something.
+  const buttons = [...document.querySelectorAll('.bench-bar button')];
+  const saved = sessionStorage.getItem('viz-width');
+  if (saved) stage.style.width = `${saved}px`;
+  for (const b of buttons) {
+    b.setAttribute('aria-pressed', String(b.dataset.w === (saved || '390')));
+    b.onclick = () => {
+      sessionStorage.setItem('viz-width', b.dataset.w);
+      location.reload();
+    };
+  }
+})();
+</script>
+</body>
+</html>
