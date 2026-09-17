@@ -503,6 +503,10 @@ const App = (() => {
     const wasOpen = !menu.hidden;
     closeAvatarMenu();
     if (wasOpen) return;
+    // Decided at open time, not at boot: the lock can be set up from Settings
+    // in the same session, and a menu built once would keep hiding the item
+    // until the next reload.
+    $('menu-lock').hidden = !Lock.configured();
     menu.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
   }
@@ -1331,7 +1335,12 @@ const App = (() => {
     $('pin-status').textContent = Lock.pinSet() ? 'PIN — set' : 'PIN';
     $('btn-pin-setup').textContent = Lock.pinSet() ? 'Remove' : 'Set up';
 
-    $('idle-timeout').value = String(Lock.idleSeconds());
+    // Back through the same mapping the option values use: idleSeconds()
+    // reports "when I close the app" as Infinity, which matches no option and
+    // would leave the select showing "immediately" — the opposite of the
+    // setting in force.
+    const idle = Lock.idleSeconds();
+    $('idle-timeout').value = Number.isFinite(idle) ? String(idle) : '-1';
     $('share-term').value = shareTerm();
 
     const boundary = $('boundary-hour');
@@ -1637,6 +1646,9 @@ const App = (() => {
     $('btn-share-go').onclick = () => doShare();
     $('btn-share-copy').onclick = () => copyShare();
     $('menu-settings').onclick = () => openSettingsFrom();
+    // Closed first so the menu is not sitting over the lock screen underneath —
+    // and so it is not still open behind the veil when the app is unlocked again.
+    $('menu-lock').onclick = () => { closeAvatarMenu(); Lock.lockNow(); };
     $('btn-settings-back').onclick = async () => {
       show(settingsReturnTo);
       if (settingsReturnTo === 'progress') await refreshProgress().catch(() => {});

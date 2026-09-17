@@ -418,16 +418,27 @@
           <option value="60">1 minute</option>
           <option value="300">5 minutes</option>
           <option value="1800">30 minutes</option>
+          <option value="7200">2 hours</option>
+          <!-- -1 is "never on resume", not "never". Opening the app fresh always
+               locks, whatever this says, so the gate cannot be switched off from
+               here — only the re-lock on app-switching can. -->
+          <option value="-1">when I close the app</option>
         </select>
       </div>
+      <p class="hint">
+        This is time spent away from the app. Opening it fresh always asks,
+        whichever of these is chosen.
+      </p>
     </section>
 
     <section class="panel">
       <h3 class="panel-title">Notifications</h3>
+      <!-- The "nothing is scheduled yet, phase 2 is coming" note that used to
+           be here went stale the day the daily check-in shipped. The iPhone
+           constraint is kept because it has not changed and it is the one way
+           enabling this silently fails. -->
       <p class="hint">
-        Nothing is scheduled yet — the daily check-in arrives in phase 2. This
-        registers the device so the plumbing can be tested. On iPhone it only
-        works from the home-screen install, never a browser tab.
+        On iPhone this only works from the home-screen install, never a browser tab.
       </p>
       <div class="setting-row">
         <span id="push-status">Not enabled</span>
@@ -526,6 +537,11 @@
     </div>
   </div>
   <button class="avatar-menu-item" role="menuitem" id="menu-settings">Settings</button>
+  <!-- Hidden unless a lock is actually configured — otherwise it is a button
+       that looks like protection and does nothing. Shown above Sign out because
+       it is the one you want in a hurry, and next to the destructive item is
+       where a hurried tap goes wrong. -->
+  <button class="avatar-menu-item" role="menuitem" id="menu-lock" hidden>Lock now</button>
   <button class="avatar-menu-item avatar-menu-item-quiet" role="menuitem" id="menu-signout">Sign out</button>
 </div>
 

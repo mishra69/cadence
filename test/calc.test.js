@@ -213,6 +213,45 @@ test('a filed tap is collected while fresh and ignored once stale', () => {
   assert.equal(Calc.inboxIsStale(undefined, Date.now(), TTL), true);
 });
 
+// ── The re-lock window ──────────────────────────────────────────────────────
+
+test('the re-lock window reads every value localStorage can hold', () => {
+  const FALLBACK = 60;
+  const r = v => Calc.relockAfter(v, FALLBACK);
+
+  // Never set: the configured default, not zero.
+  assert.equal(r(null), FALLBACK);
+  assert.equal(r(undefined), FALLBACK);
+
+  // The ordinary choices. Strings, because that is what localStorage returns.
+  assert.equal(r('0'), 0, 'immediately');
+  assert.equal(r('300'), 300);
+  assert.equal(r('7200'), 7200);
+
+  // "When I close the app" — Infinity so `away > window` is never true, which
+  // is what lets onShow() stay a single comparison.
+  assert.equal(r('-1'), Infinity);
+  assert.ok(!(Number.MAX_SAFE_INTEGER > r('-1')), 'no elapsed time re-locks');
+});
+
+test('a corrupted re-lock window fails closed, never open', () => {
+  // This is the one direction that matters. Locking sooner than asked is a
+  // nuisance; not locking when asked is the failure the lock exists to prevent,
+  // so anything unreadable must collapse to "immediately" and not to the
+  // never-lock sentinel.
+  for (const junk of ['', 'abc', '{}', 'Infinity-ish', 'NaN']) {
+    assert.equal(Calc.relockAfter(junk, 60), 0, JSON.stringify(junk));
+  }
+  // Neither is a value the UI can produce, but both parse as numbers, so the
+  // behaviour is pinned rather than left to chance. '-Infinity' is the sharp
+  // one: it is negative, and a naive sign check would hand it the never-lock
+  // sentinel — failing open on unreadable input, the exact inversion.
+  assert.equal(Calc.relockAfter('Infinity', 60), 0);
+  assert.equal(Calc.relockAfter('-Infinity', 60), 0);
+  // The sentinel is only ever a finite negative.
+  assert.equal(Calc.relockAfter('-1', 60), Infinity);
+});
+
 // ── The loader itself ───────────────────────────────────────────────────────
 
 test('calc.js reaches for no browser-only globals', () => {

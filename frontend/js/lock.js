@@ -182,9 +182,11 @@ const Lock = (() => {
 
   function configured() { return biometricRegistered() || pinSet(); }
 
+  // How long the app may sit in the background before the lock re-arms. The
+  // decision lives in Calc so it can be tested without a browser; see the
+  // sentinel and fail-closed reasoning there.
   function idleSeconds() {
-    const v = localStorage.getItem(K_IDLE);
-    return v == null ? CONFIG.IDLE_RELOCK_SECONDS : Number(v);
+    return Calc.relockAfter(localStorage.getItem(K_IDLE), CONFIG.IDLE_RELOCK_SECONDS);
   }
   function setIdleSeconds(s) { localStorage.setItem(K_IDLE, String(s)); }
 

@@ -188,11 +188,38 @@ var Calc = (function () {
     return now - filedAt > ttlMs;
   }
 
+  /**
+   * How long the app may sit in the background before the lock re-arms.
+   *
+   * `stored` is the raw localStorage string, so every value it can hold has to
+   * be answered for: absent (never set), a number, the -1 sentinel meaning
+   * "when I close the app", and junk.
+   *
+   * The sentinel becomes Infinity so the caller's `away > relockAfter(...)`
+   * comparison needs no special case — nothing exceeds Infinity, so resuming
+   * never locks. It does not disable the lock: a fresh load locks regardless,
+   * which is the property that makes offering this safe at all.
+   *
+   * Junk fails closed at 0. Locking sooner than asked is a nuisance; failing
+   * open is the single outcome the lock exists to prevent.
+   */
+  function relockAfter(stored, fallbackSeconds) {
+    if (stored == null) return fallbackSeconds;
+    var n = Number(stored);
+    // Order matters: anything unreadable is rejected *before* the sentinel is
+    // considered, so a stored '-Infinity' fails closed rather than being taken
+    // for a negative and granted the never-lock behaviour.
+    if (stored === '' || !Number.isFinite(n)) return 0;
+    if (n < 0) return Infinity;
+    return n;
+  }
+
   return {
     DAY_MS: DAY_MS,
     ACTIONS: ACTIONS,
     readAction: readAction,
     inboxIsStale: inboxIsStale,
+    relockAfter: relockAfter,
     HOUR_MS: HOUR_MS,
     SETTLE_MS: SETTLE_MS,
     logicalDate: logicalDate,
