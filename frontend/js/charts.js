@@ -30,6 +30,16 @@ const Charts = (() => {
   const fmtDay = d => new Date(`${d}T12:00:00Z`)
     .toLocaleDateString([], { day: 'numeric', month: 'short' });
 
+  // Ties a number in the tooltip to the series it came from. With two series
+  // the pill reads "4.0/wk 30-day 4.9" and nothing says which dot is which —
+  // on the plot the colour is the only thing that distinguishes them, so the
+  // tooltip has to carry it too.
+  //
+  // A swatch rather than colouring the number: these are 3:1 graphical colours,
+  // which is the right bar for a mark and well under it for 12.5px text.
+  const swatch = c => `<i class="ro-sw" style="background:${c}"></i>`;
+  const SEP = '<span class="ro-sep"></span>';
+
   // ── Scrub ─────────────────────────────────────────────────────────────────
 
   /**
@@ -190,12 +200,17 @@ const Charts = (() => {
     for (const r of runs('per_week_7d', d => !wellLogged(d))) draw(r, SLIP(), 0.35);
     for (const r of runs('per_week_7d', wellLogged)) draw(r, SLIP());
 
+    // "Where the line ends" — a resting marker, not a reading. It is hidden as
+    // soon as a scrub starts: during a drag the two cursor dots are the answer,
+    // and a third dot parked at the right edge reads as another data point
+    // rather than as the same series' last value.
     const last = drawn[drawn.length - 1];
     const lastIdx = data.indexOf(last);
-    svg.append(el('circle', {
+    const lastDot = el('circle', {
       cx: x(lastIdx), cy: y(last.per_week_7d), r: 4, fill: SLIP(),
       stroke: SURFACE(), 'stroke-width': 2, opacity: wellLogged(last) ? 1 : 0.35,
-    }));
+    });
+    svg.append(lastDot);
 
     for (const [i, anchor] of [[0, 'start'], [data.length - 1, 'end']]) {
       const t = el('text', { x: x(i), y: H - 6, fill: INK(), 'font-size': 8, 'text-anchor': anchor });
@@ -234,6 +249,7 @@ const Charts = (() => {
       });
       const d = data[i];
 
+      lastDot.setAttribute('opacity', 0);
       rule.setAttribute('x1', x(i));
       rule.setAttribute('x2', x(i));
       rule.setAttribute('opacity', 0.5);
@@ -246,15 +262,15 @@ const Charts = (() => {
       if (d.per_week_7d == null) {
         parts.push('<span class="ro-dim">not enough history yet</span>');
       } else {
-        parts.push(`${fmt1(d.per_week_7d)}<span class="ro-dim">/wk</span>`);
+        parts.push(`${swatch(SLIP())}${fmt1(d.per_week_7d)}<span class="ro-dim">/wk</span>`);
         if (d.per_week_30d != null) {
-          parts.push(`<span class="ro-dim">30-day</span> ${fmt1(d.per_week_30d)}`);
+          parts.push(`${swatch(CLEAN())}${fmt1(d.per_week_30d)}<span class="ro-dim">&nbsp;30-day</span>`);
         }
-        if (!wellLogged(d)) parts.push('<span class="ro-dim">· thin</span>');
+        if (!wellLogged(d)) parts.push('<span class="ro-dim">thin</span>');
       }
       // Value first, date under it — the value is what the gesture is for, and
       // the date is how you confirm you landed on the right day.
-      p.show(`${parts.join(' ')}<br><span class="ro-dim">${fmtDay(d.day)}</span>`,
+      p.show(`${parts.join(SEP)}<br><span class="ro-dim">${fmtDay(d.day)}</span>`,
              (x(i) / W) * box.width);
     });
 

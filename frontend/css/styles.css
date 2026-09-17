@@ -589,8 +589,25 @@ button, .btn, [role="button"], input, select, textarea, a {
 .chart-note { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; }
 
 /* The scrub tooltip rides above the plot, so the padding is headroom for it
-   rather than spacing — without it the pill is clipped by the panel. */
-.chart-plot { position: relative; padding-top: 34px; }
+   rather than spacing — without it the pill is clipped by the panel.
+
+   Derived from the pill rather than tuned against it: the two share the type
+   metrics below, so changing the tooltip's size moves its headroom with it. At
+   a hardcoded 34px the pill overhung by eight pixels, which on the line chart
+   landed in empty sky and went unnoticed, and on the ribbon covered the top row
+   of cells — the row you are reading whenever the pill is above it.
+
+   The 2 is the pill's line count. A three-line pill would need it raised. */
+:root {
+  --tip-font: 12.5px;
+  --tip-line: 1.3;
+  --tip-pad-y: 4px;
+}
+.chart-plot {
+  position: relative;
+  /* lines + vertical padding + 1px border top and bottom + a little air */
+  padding-top: calc(2 * var(--tip-font) * var(--tip-line) + 2 * var(--tip-pad-y) + 2px + 4px);
+}
 
 /* Pinned to the top of the plot and tracking x only. Following the dot's y as
    well would mean the pill jumps vertically as the series does, which on a
@@ -600,12 +617,12 @@ button, .btn, [role="button"], input, select, textarea, a {
   position: absolute;
   top: 0;
   left: 0;
-  padding: 4px 9px;
+  padding: var(--tip-pad-y) 9px;
   border-radius: 9px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  font-size: 12.5px;
-  line-height: 1.3;
+  font-size: var(--tip-font);
+  line-height: var(--tip-line);
   white-space: nowrap;
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -617,12 +634,29 @@ button, .btn, [role="button"], input, select, textarea, a {
 .chart-tip.is-on { opacity: 1; }
 .chart-tip .ro-dim { color: var(--text-dim); }
 
+/* Matches the legend swatch, because it means the same thing in both places. */
+.chart-tip .ro-sw {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: baseline;
+}
+/* Two readings on one line need more than a word space between them, or the
+   second swatch reads as belonging to the first number. */
+.chart-tip .ro-sep { display: inline-block; width: 11px; }
 
-/* pan-y, not none: this plot spans the full column width, so `none` would make
-   any gesture starting on it a dead spot for scrolling the page. The line scrub
-   only ever reads an x position, so handing vertical pans back to the browser
-   costs the interaction nothing. */
-.chart-scrub { touch-action: pan-y; display: block; }
+
+/* `none`, matching the ribbon. It was pan-y so the plot would not be a dead
+   spot for scrolling the page, and the cost of that was the scrub losing the
+   gesture: a drag along the line is never perfectly horizontal, and the moment
+   the browser decided the vertical component was a pan it took the gesture and
+   the read ended mid-drag. touch-action is evaluated once when the gesture
+   starts, so this cannot be resolved after the fact from a handler.
+   The trade is deliberate — the chart and the ribbon no longer scroll the page,
+   and everything around them (heading, legend, notes, the stats above) still
+   does. */
+.chart-scrub { touch-action: none; display: block; }
 
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; }
 .range-nav { display: flex; gap: 2px; }
