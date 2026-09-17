@@ -384,12 +384,12 @@
 
     <section class="panel">
       <h3 class="panel-title">Lock</h3>
-      <p class="hint">
-        A screen-lock, not encryption. It keeps the app closed to someone holding
-        the phone; it does not protect the data on the server. iOS stores the
-        Face ID gate as a passkey for this site — that's the same thing under
-        Apple's name for it.
-      </p>
+      <!-- Kept to one line each. The old copy explained the threat model and
+           named the passkey mechanism, which is the kind of thing worth knowing
+           once and not worth re-reading every visit to this screen. What stays
+           is only what could change a decision: that this is a screen gate
+           rather than encryption. The passkey detail lives in plan §4.1. -->
+      <p class="hint">Keeps the app closed if someone picks up your phone. It isn't encryption.</p>
       <div class="setting-row">
         <span id="bio-status">Face ID / Touch ID</span>
         <button class="btn btn-small" id="btn-bio-setup">Set up</button>
@@ -425,10 +425,7 @@
           <option value="-1">when I close the app</option>
         </select>
       </div>
-      <p class="hint">
-        This is time spent away from the app. Opening it fresh always asks,
-        whichever of these is chosen.
-      </p>
+      <p class="hint">Time away from the app. Opening it fresh always asks.</p>
     </section>
 
     <section class="panel">
@@ -449,13 +446,18 @@
 
     <section class="panel">
       <h3 class="panel-title">Sharing</h3>
+      <!-- The old copy pointed at a tick box that is on the share screen, not
+           this one, so from here it named a control that wasn't visible. The
+           field alone carries the meaning: blank means it doesn't get named. -->
       <p class="hint">
-        Only used if you tick "name it explicitly" when sharing to a chatbot.
-        Stored on this device only — never sent to the server.
+        What to call it if you name it when sharing. Blank means unnamed.
+        Never leaves this device.
       </p>
       <div class="setting-row">
         <label for="share-term">Call it</label>
-        <input type="text" id="share-term" placeholder="(leave blank to stay vague)"
+        <!-- Echoes the word the hint uses, so an empty field reads as a state
+             rather than as something not filled in yet. -->
+        <input type="text" id="share-term" placeholder="(unnamed)"
                autocomplete="off" style="width:auto;flex:1;margin-left:12px" />
       </div>
     </section>
@@ -466,13 +468,19 @@
         <label for="boundary-hour">A day starts at</label>
         <select id="boundary-hour"></select>
       </div>
+      <!-- Was a note about cached derived columns and the name of the rebuild
+           script. True, and none of the reader's business — they cannot run it,
+           and it told them nothing about what changing this setting does to
+           them. The user-facing consequence is that it is not retroactive. -->
       <p class="hint">
-        Changing this re-files events near the boundary the next time they're
-        read. Existing rows keep their old cached day until
-        <code>scripts/rebuild-derived.ts</code> is run.
+        Applies to what you log from now on. Days already recorded keep the
+        boundary they were logged under.
       </p>
       <div class="setting-row">
-        <label for="backfill-days">Backfill window</label>
+        <!-- "Backfill window" was the term from the plan, not a thing anyone
+             would say. The label now states what the setting does, which is
+             also why it needs no hint under it. -->
+        <label for="backfill-days">Log as far back as</label>
         <select id="backfill-days">
           <option value="1">1 day</option>
           <option value="3">3 days</option>
