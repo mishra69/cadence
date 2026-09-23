@@ -607,6 +607,22 @@ button, .btn, [role="button"], input, select, textarea, a {
   position: relative;
   /* lines + vertical padding + 1px border top and bottom + a little air */
   padding-top: calc(2 * var(--tip-font) * var(--tip-line) + 2 * var(--tip-pad-y) + 2px + 4px);
+
+  /* This is the declaration that actually stops the page scrolling under a
+     scrub, and it is here rather than on the <svg> because WebKit does not
+     apply touch-action to SVG elements. The rule on .chart-scrub computes to
+     `none` in Chrome and is simply ignored on iOS — which is why the ribbon,
+     whose scrub target is a plain <div>, already behaved and the chart did not.
+     Identical CSS, identical ancestor chain, one element type apart.
+
+     A drag along a line is never perfectly horizontal, so with the page still
+     pannable the browser claimed the gesture the moment it saw vertical
+     movement and the read ended mid-drag. touch-action is resolved once, when
+     the gesture starts, so no handler can undo this after the fact.
+
+     The trade is deliberate: the plot and the ribbon no longer scroll the page.
+     Everything around them — heading, legend, notes, the stats above — does. */
+  touch-action: none;
 }
 
 /* Pinned to the top of the plot and tracking x only. Following the dot's y as
@@ -647,15 +663,8 @@ button, .btn, [role="button"], input, select, textarea, a {
 .chart-tip .ro-sep { display: inline-block; width: 11px; }
 
 
-/* `none`, matching the ribbon. It was pan-y so the plot would not be a dead
-   spot for scrolling the page, and the cost of that was the scrub losing the
-   gesture: a drag along the line is never perfectly horizontal, and the moment
-   the browser decided the vertical component was a pan it took the gesture and
-   the read ended mid-drag. touch-action is evaluated once when the gesture
-   starts, so this cannot be resolved after the fact from a handler.
-   The trade is deliberate — the chart and the ribbon no longer scroll the page,
-   and everything around them (heading, legend, notes, the stats above) still
-   does. */
+/* Kept for engines that honour it on SVG — but it is NOT what makes this work.
+   See .chart-plot below. */
 .chart-scrub { touch-action: none; display: block; }
 
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; }
