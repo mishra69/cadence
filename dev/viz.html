@@ -21,7 +21,7 @@
     npm run viz      # then open the URL it prints
 
   What it is not: a test. Nothing here asserts. It renders the cases that are
-  awkward to reach by hand — an empty series, a history too short for the 30-day
+  awkward to reach by hand — an empty series, a history too short for the smoothed
   average, gaps, thinly-logged stretches, multi-slip cells — so that looking is
   cheap. The arithmetic behind these shapes is tested in test/calc.test.js and
   test/series.test.js, where no browser is involved.
@@ -99,7 +99,7 @@
   /**
    * @param n      days
    * @param opts.nullHead    leading days with no 7-day rate (history too short)
-   * @param opts.smoothFrom  first day carrying a 30-day average; null for none
+   * @param opts.smoothFrom  first day carrying a 4-week average; null for none
    * @param opts.thin        [from, to) days logged too thinly to trust
    */
   function series(n, { nullHead = 0, smoothFrom = 12, thin = null } = {}) {
@@ -107,7 +107,7 @@
     return Array.from({ length: n }, (_, i) => ({
       day: iso(start + i * DAY),
       per_week_7d: i < nullHead ? null : 4 + 2 * Math.sin(i / 2.3) + (i % 7 === 0 ? 1 : 0),
-      per_week_30d: smoothFrom == null || i < smoothFrom ? null : 4.9 + Math.sin(i / 9),
+      per_week_28d: smoothFrom == null || i < smoothFrom ? null : 4.9 + Math.sin(i / 9),
       coverage_7d: thin && i >= thin[0] && i < thin[1] ? 0.2 : 0.9,
     }));
   }
@@ -136,8 +136,8 @@
         'The ordinary view. Scrub it: each value should carry its own swatch, and the resting dot at the right should disappear once a drag starts.',
         h => Charts.rolling(h, series(63, { nullHead: 5, thin: [21, 26] })));
 
-  bench('Rolling — no 30-day average yet',
-        'Under 30 days of history. The legend must explain the missing series rather than silently dropping it, and the pill must not print a second value.',
+  bench('Rolling — no 4-week average yet',
+        'Under four weeks of history. The legend must explain the missing series rather than silently dropping it, and the pill must not print a second value.',
         h => Charts.rolling(h, series(20, { nullHead: 5, smoothFrom: null })));
 
   bench('Rolling — one point',

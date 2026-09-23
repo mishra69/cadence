@@ -31,7 +31,7 @@ const Charts = (() => {
     .toLocaleDateString([], { day: 'numeric', month: 'short' });
 
   // Ties a number in the tooltip to the series it came from. With two series
-  // the pill reads "4.0/wk 30-day 4.9" and nothing says which dot is which —
+  // the pill reads "4.0/wk 4.9 4-week" and nothing says which dot is which —
   // on the plot the colour is the only thing that distinguishes them, so the
   // tooltip has to carry it too.
   //
@@ -119,10 +119,14 @@ const Charts = (() => {
   // ── Relapses per week ─────────────────────────────────────────────────────
 
   /**
-   * Two series on ONE axis, both in "per week". A 7-day count against a 30-day
+   * Two series on ONE axis, both in "per week". A 7-day count against a 28-day
    * count would be two scales on one chart — the most common charting mistake —
-   * so the 30-day window is expressed per week and the comparison is honest:
-   * one is the noisy read, the other the smoothed one.
+   * so the long window is divided by 4 and the comparison is honest: one is the
+   * noisy read, the other the smoothed one.
+   *
+   * 28 days rather than 30 because 28 is exactly four weeks. See the note in
+   * worker/lib/series.js for why a window that is not a whole number of weeks
+   * puts a 7-day ripple into the line that exists to be the steady one.
    *
    * Nulls are gaps, never zeroes. A window that does not fit inside recorded
    * history has no value, and drawing it along the floor would assert "no
@@ -141,7 +145,7 @@ const Charts = (() => {
 
     const W = 320, H = 132, P = { t: 10, r: 10, b: 20, l: 24 };
     const iw = W - P.l - P.r, ih = H - P.t - P.b;
-    const max = Math.max(2, ...data.map(d => Math.max(d.per_week_7d ?? 0, d.per_week_30d ?? 0)));
+    const max = Math.max(2, ...data.map(d => Math.max(d.per_week_7d ?? 0, d.per_week_28d ?? 0)));
 
     const svg = el('svg', {
       viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img',
@@ -192,7 +196,7 @@ const Charts = (() => {
     };
 
     // The smoothed series sits underneath, so the noisy one reads on top of it.
-    for (const r of runs('per_week_30d')) draw(r, CLEAN());
+    for (const r of runs('per_week_28d')) draw(r, CLEAN());
 
     // Well-logged stretches solid; thin ones faded, so a zero from not logging
     // does not look like a zero from not slipping.
@@ -226,8 +230,8 @@ const Charts = (() => {
     });
     const dot = k => el('circle', { r: 3.5, fill: k, stroke: SURFACE(), 'stroke-width': 1.5, opacity: 0 });
     const dot7 = dot(SLIP());
-    const dot30 = dot(CLEAN());
-    svg.append(rule, dot30, dot7);
+    const dotAvg = dot(CLEAN());
+    svg.append(rule, dotAvg, dot7);
 
     const p = plot(host);
     p.wrap.append(svg);
@@ -254,7 +258,7 @@ const Charts = (() => {
       rule.setAttribute('x2', x(i));
       rule.setAttribute('opacity', 0.5);
       place(dot7, i, d.per_week_7d);
-      place(dot30, i, d.per_week_30d);
+      place(dotAvg, i, d.per_week_28d);
 
       // Nulls are gaps here too: a day whose window predates the record has no
       // rate, and printing 0.0 would assert the thing the gaps exist to avoid.
@@ -263,8 +267,8 @@ const Charts = (() => {
         parts.push('<span class="ro-dim">not enough history yet</span>');
       } else {
         parts.push(`${swatch(SLIP())}${fmt1(d.per_week_7d)}<span class="ro-dim">/wk</span>`);
-        if (d.per_week_30d != null) {
-          parts.push(`${swatch(CLEAN())}${fmt1(d.per_week_30d)}<span class="ro-dim">&nbsp;30-day</span>`);
+        if (d.per_week_28d != null) {
+          parts.push(`${swatch(CLEAN())}${fmt1(d.per_week_28d)}<span class="ro-dim">&nbsp;4-week</span>`);
         }
         if (!wellLogged(d)) parts.push('<span class="ro-dim">thin</span>');
       }
@@ -274,15 +278,15 @@ const Charts = (() => {
              (x(i) / W) * box.width);
     });
 
-    const hasSmooth = data.some(d => d.per_week_30d != null);
+    const hasSmooth = data.some(d => d.per_week_28d != null);
     const thin = data.some(d => d.per_week_7d != null && !wellLogged(d));
     const legend = document.createElement('div');
     legend.className = 'chart-legend';
     legend.innerHTML =
       `<span><i style="background:${SLIP()}"></i>per week</span>` +
       (hasSmooth
-        ? `<span><i style="background:${CLEAN()}"></i>30-day average</span>`
-        : `<span class="chart-note">30-day average needs 30 days of history</span>`);
+        ? `<span><i style="background:${CLEAN()}"></i>4-week average</span>`
+        : `<span class="chart-note">4-week average needs 4 weeks of history</span>`);
     host.append(legend);
 
     if (thin) {

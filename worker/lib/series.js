@@ -27,11 +27,23 @@ const parseDay = s => { const [y, m, d] = s.split('-').map(Number); return Date.
 /**
  * Relapses in a trailing window, per day, expressed **per week** in both cases.
  *
- * The two windows share a unit on purpose. A 7-day count and a 30-day count are
+ * The two windows share a unit on purpose. A 7-day count and a 28-day count are
  * the same measure at different magnitudes, and plotting them against two
- * y-scales is the single most common charting mistake. Dividing the 30-day
- * window by 30 and multiplying by 7 puts both on one axis, where they can
- * honestly be compared: one is the noisy read, the other the smoothed one.
+ * y-scales is the single most common charting mistake. Dividing the long window
+ * by 4 puts both on one axis, where they can honestly be compared: one is the
+ * noisy read, the other the smoothed one.
+ *
+ * The smoothed window is 28 days, not 30, because 28 is **exactly four weeks**.
+ * A 30-day window spans 4.29 weeks, so it holds some weekdays five times and
+ * others four — and which ones rotates as the window slides. Any weekly rhythm
+ * in the behaviour is then re-emitted as a 7-day ripple in the line whose whole
+ * job is to be the steady one. On a synthetic signal with a dead-constant rate
+ * of 2.0/week concentrated on Mondays, the 30-day window oscillated 1.9↔2.3 — a
+ * 20% swing invented out of a rate that never moved. The 28-day window sat flat.
+ *
+ * It also lines up with what is drawn directly below it: the ribbon is one
+ * column per week, so four weeks is the last four columns rather than a period
+ * with no visible counterpart.
  *
  * Both series are null until their window is fully inside recorded history. A
  * partial window slopes purely because it is filling, and before tracking began
@@ -78,8 +90,10 @@ export function rollingRelapses({ events, tz, settings, now = Date.now(), days =
     return {
       day,
       per_week_7d: hist >= 7 ? windowBack(i, 7, d => relapsesByDay.get(d) || 0) : null,
-      per_week_30d: hist >= 30
-        ? Math.round((windowBack(i, 30, d => relapsesByDay.get(d) || 0) / 30) * 7 * 10) / 10
+      // /4 exactly, because 28 days is four whole weeks. The old /30*7 was an
+      // inexact conversion hidden behind the rounding.
+      per_week_28d: hist >= 28
+        ? Math.round((windowBack(i, 28, d => relapsesByDay.get(d) || 0) / 4) * 10) / 10
         : null,
       // 0–1. Low coverage means the count above is a floor, not a measurement.
       coverage_7d: hist >= 7

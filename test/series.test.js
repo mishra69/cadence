@@ -24,14 +24,49 @@ test('the 7-day series counts a trailing window, per day', () => {
 });
 
 test('both series share a unit so they can share an axis', () => {
-  // A 7-day count against a 30-day count is two scales on one chart — the
-  // canonical charting mistake. Expressing the 30-day window *per week* puts
+  // A 7-day count against a 28-day count is two scales on one chart — the
+  // canonical charting mistake. Expressing the long window *per week* puts
   // them on the same axis, where the comparison is honest.
   const events = [ev(80, 'daily'), ...Array.from({ length: 12 }, (_, i) => ev(i * 5, 'relapse'))];
   const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: 70 });
-  const withBoth = s.filter(p => p.per_week_30d != null);
+  const withBoth = s.filter(p => p.per_week_28d != null);
   assert.ok(withBoth.length > 0);
-  for (const p of withBoth) assert.ok(p.per_week_30d >= 0 && p.per_week_30d <= 7, `${p.day}`);
+  for (const p of withBoth) assert.ok(p.per_week_28d >= 0 && p.per_week_28d <= 7, `${p.day}`);
+});
+
+test('the smoothed window is whole weeks, so a weekly rhythm cannot ripple it', () => {
+  // This is the reason the window is 28 and not 30, and it is the assertion
+  // that should fail if anyone changes it back.
+  //
+  // 30 days spans 4.29 weeks, so it holds some weekdays five times and others
+  // four, and which ones rotates as it slides. Fed a signal whose true rate
+  // never changes, a 30-day window still wobbles — on this exact input it ran
+  // 1.9 to 2.3, a 20% swing invented from nothing. Four whole weeks cannot:
+  // every weekday is inside it exactly four times, always.
+  const weeks = 14;
+  const events = [ev(weeks * 7, 'daily')];
+  // Two relapses every Monday and none otherwise: a hard weekly shape on a
+  // dead-constant 2.0/week rate. The rhythm has to start on the very first day
+  // of history — begin it a week late and the earliest windows are short by one
+  // Monday, which looks exactly like the ripple this test is hunting for.
+  for (let d = weeks * 7; d >= 0; d -= 7) events.push(ev(d, 'relapse'), ev(d, 'relapse', 13));
+
+  const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: weeks * 7 });
+  const smoothed = s.filter(p => p.per_week_28d != null).map(p => p.per_week_28d);
+
+  assert.ok(smoothed.length > 14, 'enough points to see a ripple if there were one');
+  assert.deepEqual([...new Set(smoothed)], [2],
+    `a constant rate must draw a constant line; got ${[...new Set(smoothed)].join(', ')}`);
+});
+
+test('the smoothed value is the count divided by four, exactly', () => {
+  // 28 days is four weeks, so the conversion to "per week" is a clean divide
+  // rather than the old x7/30, which was inexact and hidden by the rounding.
+  const events = [ev(60, 'daily'), ...Array.from({ length: 6 }, (_, i) => ev(i * 4, 'relapse'))];
+  const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: 60 });
+  const last = s[s.length - 1];
+  // All six fall inside the trailing 28 days.
+  assert.equal(last.per_week_28d, 6 / 4);
 });
 
 // The bug this pins: before tracking began, a count of zero is not a low rate.
@@ -43,7 +78,7 @@ test('neither series draws before its window fits inside real history', () => {
 
   assert.ok(s.every(p => p.per_week_7d === null),
     'a 7-day window needs 7 days of history behind it');
-  assert.ok(s.every(p => p.per_week_30d === null));
+  assert.ok(s.every(p => p.per_week_28d === null));
   assert.ok(s.every(p => p.coverage_7d === null));
 });
 
@@ -56,12 +91,12 @@ test('the 7-day series begins exactly a week after tracking starts', () => {
   assert.ok(s.slice(0, s.length - 15).every(p => p.per_week_7d === null));
 });
 
-test('the 30-day series appears later than the 7-day one', () => {
+test('the smoothed series appears later than the 7-day one', () => {
   const events = [ev(60, 'daily'), ...Array.from({ length: 10 }, (_, i) => ev(i * 6, 'relapse'))];
   const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: 60 });
   const first7 = s.findIndex(p => p.per_week_7d != null);
-  const first30 = s.findIndex(p => p.per_week_30d != null);
-  assert.ok(first7 >= 0 && first30 > first7, `7d at ${first7}, 30d at ${first30}`);
+  const first28 = s.findIndex(p => p.per_week_28d != null);
+  assert.ok(first7 >= 0 && first28 > first7, `7d at ${first7}, 28d at ${first28}`);
 });
 
 // The other half of the same hazard: a week you did not log produces a genuine
@@ -113,7 +148,7 @@ test('coverage reports how much of the window was actually logged', () => {
 test('an empty history draws nothing at all', () => {
   const s = rollingRelapses({ events: [], tz: IST, settings: S, now: NOW, days: 14 });
   assert.equal(s.length, 14);
-  assert.ok(s.every(p => p.per_week_7d === null && p.per_week_30d === null));
+  assert.ok(s.every(p => p.per_week_7d === null && p.per_week_28d === null));
 });
 
 test('endDay pages the window backwards', () => {
