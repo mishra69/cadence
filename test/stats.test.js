@@ -143,6 +143,54 @@ test('urges older than the 90-day window do not count toward the gate', async ()
 
 // ── Attempt spans ───────────────────────────────────────────────────────────
 
+test('attempt lengths are kept exact, and the day fields still floor', () => {
+  // The sub-day cadence this exists for: relapses 47 hours apart used to leave
+  // this function as "1 day" and nothing could recover the other 23 hours.
+  const HOUR = 3_600_000;
+  const now = Date.UTC(2026, 5, 15);
+  const a = attemptStats([now - 94 * HOUR, now - 47 * HOUR], now);
+
+  assert.equal(a.best_ms, 47 * HOUR, 'exact, to the millisecond');
+  assert.equal(a.median_attempt_ms, 47 * HOUR);
+  // And the floored fields are unchanged, because the notification's "Day N"
+  // framing reads them and wants a whole number of days.
+  assert.equal(a.best_days, 1);
+  assert.equal(a.median_attempt_days, 1);
+});
+
+test('two cadences that floor to the same day count stay distinguishable', () => {
+  // 28h and 47h both report "1d". Before the exact fields existed, that made a
+  // cycle that had nearly doubled invisible in every number the app showed.
+  const HOUR = 3_600_000;
+  const now = Date.UTC(2026, 5, 15);
+  const tight = attemptStats([now - 56 * HOUR, now - 28 * HOUR], now);
+  const loose = attemptStats([now - 94 * HOUR, now - 47 * HOUR], now);
+
+  assert.equal(tight.best_days, loose.best_days, 'identical in days — the old problem');
+  assert.notEqual(tight.best_ms, loose.best_ms, 'and separable in ms — the fix');
+  assert.equal(tight.best_ms / HOUR, 28);
+  assert.equal(loose.best_ms / HOUR, 47);
+});
+
+test('getStats carries the streak undivided alongside the day count', async () => {
+  const HOUR = 3_600_000;
+  const db = makeDb();
+  await add(db, 'relapse', NOW - 47 * HOUR);
+  const s = await getStats(db, U, IST, S, NOW);
+  assert.equal(s.streak_days, 1);
+  assert.equal(s.streak_ms, 47 * HOUR);
+});
+
+test('no relapse on record leaves every exact field null, not zero', async () => {
+  // Zero would render as "0h", which asserts a streak that just ended. Null is
+  // the client's signal to show length-of-record instead.
+  const db = makeDb();
+  const s = await getStats(db, U, IST, S, NOW);
+  assert.equal(s.streak_ms, null);
+  assert.equal(s.best_ms, null);
+  assert.equal(s.median_attempt_ms, null);
+});
+
 test('attemptStats excludes both censored spans from the median', () => {
   const now = Date.UTC(2026, 5, 15);
   const d = n => now - n * DAY_MS;

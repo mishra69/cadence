@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildContext } from '../worker/lib/context.js';
 import { DAY_MS } from '../worker/lib/time.js';
+import { loadCalc } from './helpers/frontend.js';
 
 const NOW = Date.UTC(2026, 7, 31, 12, 0);
 const ago = d => NOW - d * DAY_MS;
@@ -106,7 +107,44 @@ test('an unverified streak says so rather than presenting a clean number', () =>
   const out = build({
     stats: { ...STATS, confidence: { unverified: true, unverified_days: 6 } },
   });
-  assert.match(out, /unconfirmed for 6 of them/);
+  assert.match(out, /unconfirmed for 6 days/);
+});
+
+test('the summary switches to hours at the same point the stats row does', () => {
+  // The rule is implemented twice — context.js renders it as prose on the
+  // server, calc.js renders it as a label on the client — for the same reason
+  // derive() and logicalDate() are separate: the worker cannot import a plain
+  // browser script. This pins them to the same boundary so they cannot drift
+  // apart without a test saying so.
+  const Calc = loadCalc();
+  const HOUR = 3_600_000;
+  const at = ms => build({ stats: { ...STATS, streak_days: Math.floor(ms / DAY_MS), streak_ms: ms } });
+
+  for (const [ms, prose, label] of [
+    [28 * HOUR, '28 hours', '28h'],
+    [47 * HOUR, '47 hours', '47h'],
+    [2 * DAY_MS, '2 days', '2d'],
+    [6 * DAY_MS, '6 days', '6d'],
+  ]) {
+    assert.match(at(ms), new RegExp(`${prose} since the last slip`), prose);
+    assert.equal(Calc.attemptLabel(ms), label, label);
+  }
+  assert.equal(Calc.HOURS_BELOW_MS, 2 * DAY_MS, 'both sides switch at two days');
+});
+
+test('the unverified count names its unit, because the streak may be in hours', () => {
+  // It used to read "unconfirmed for 6 of them", which was unambiguous only
+  // while the sentence always opened with a day count. Now it can open with
+  // "47 hours", and "6 of them" would quietly mean six hours.
+  const out = build({
+    stats: {
+      ...STATS, streak_days: 1, streak_ms: 47 * 3_600_000,
+      confidence: { unverified: true, unverified_days: 1 },
+    },
+  });
+  assert.match(out, /47 hours since the last slip/);
+  assert.match(out, /unconfirmed for 1 day —/, 'singular, and carrying its unit');
+  assert.ok(!/of them/.test(out));
 });
 
 test('the dominant time-of-day cluster is called out', () => {

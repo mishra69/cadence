@@ -18,11 +18,17 @@ import { lastActivityAt, streakConfidence } from './activity.js';
  * already the longest genuinely is the longest so far.
  */
 export function attemptStats(relapseTimestamps, now = Date.now()) {
+  // Milliseconds throughout, with days derived at the end rather than the
+  // other way round. Attempts are not day-shaped: a 47-hour attempt is a real
+  // 47 hours, and dividing by a day first meant the only value that ever left
+  // this function had already lost up to 23:59 of it. Nothing stored changes —
+  // ts_utc was always exact — this just stops discarding the remainder before
+  // anyone gets to decide whether they want it.
   const rs = [...relapseTimestamps].sort((a, b) => a - b);
   const completed = [];
-  for (let i = 1; i < rs.length; i++) completed.push((rs[i] - rs[i - 1]) / DAY_MS);
+  for (let i = 1; i < rs.length; i++) completed.push(rs[i] - rs[i - 1]);
 
-  const current = rs.length ? (now - rs[rs.length - 1]) / DAY_MS : null;
+  const current = rs.length ? now - rs[rs.length - 1] : null;
 
   let median = null;
   if (completed.length) {
@@ -35,12 +41,19 @@ export function attemptStats(relapseTimestamps, now = Date.now()) {
   if (current != null) candidates.push(current);
   const best = candidates.length ? Math.max(...candidates) : null;
 
+  const inDays = ms => (ms == null ? null : Math.floor(ms / DAY_MS));
+
   return {
     // Each relapse closes an attempt; one more is in progress.
     attempt_count: rs.length ? rs.length + 1 : (current == null ? 0 : 1),
     completed_attempts: completed.length,
-    median_attempt_days: median == null ? null : Math.floor(median),
-    best_days: best == null ? null : Math.floor(best),
+    // Whole days, kept because the notification's "Day 12" framing wants a day
+    // count and nothing else. These floor, by definition.
+    median_attempt_days: inDays(median),
+    best_days: inDays(best),
+    // Exact. What anything rendering sub-day precision should read.
+    median_attempt_ms: median,
+    best_ms: best,
   };
 }
 
@@ -134,6 +147,9 @@ export async function getStats(db, userId, tz, settings, now = Date.now()) {
     // Kept, but never the headline — shown beside best and median so a
     // single-digit number reads as typical rather than as failure (§0).
     streak_days: streak,
+    // The same figure undivided, so a 47-hour streak can be shown as 47 hours
+    // instead of collapsing onto a 24-hour one.
+    streak_ms: lastRelapse == null ? null : Math.max(0, now - lastRelapse),
     // No relapse on record yet: elapsed time since tracking began is the honest
     // number, but it is explicitly not a streak, so the client labels it.
     days_tracked: firstTs == null ? 0 : Math.floor((now - firstTs) / DAY_MS),

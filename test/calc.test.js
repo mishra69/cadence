@@ -213,6 +213,47 @@ test('a filed tap is collected while fresh and ignored once stale', () => {
   assert.equal(Calc.inboxIsStale(undefined, Date.now(), TTL), true);
 });
 
+// ── Attempt lengths ─────────────────────────────────────────────────────────
+
+test('an attempt under two days reads in hours, not as a flattened day', () => {
+  // The whole point. Flooring to days made 24h, 28h, 36h and 47h all read "1d",
+  // so a cadence that nearly doubled was invisible in the number.
+  const L = Calc.attemptLabel;
+  assert.equal(L(24 * HOUR), '24h');
+  assert.equal(L(28 * HOUR), '28h');
+  assert.equal(L(36 * HOUR), '36h');
+  assert.equal(L(47 * HOUR), '47h');
+  assert.notEqual(L(28 * HOUR), L(47 * HOUR), 'these must not collapse together');
+});
+
+test('two days is the switch, and it is exact', () => {
+  const L = Calc.attemptLabel;
+  assert.equal(L(Calc.HOURS_BELOW_MS - 1), '47h', 'a millisecond under');
+  assert.equal(L(Calc.HOURS_BELOW_MS), '2d', 'and at it');
+  assert.equal(L(2 * DAY), '2d');
+  assert.equal(L(6 * DAY), '6d');
+});
+
+test('the label floors in both units, so it never claims time that has not passed', () => {
+  const L = Calc.attemptLabel;
+  // 47h59m is not two days, and rendering "48h" would read as exactly that.
+  assert.equal(L(47 * HOUR + 59 * 60_000), '47h');
+  assert.equal(L(HOUR - 1), '0h', 'the first hour is not yet an hour');
+  assert.equal(L(0), '0h');
+  // Above the switch the same applies: 6d23h is not a week.
+  assert.equal(L(6 * DAY + 23 * HOUR), '6d');
+});
+
+test('an absent or nonsense length has no label rather than a wrong one', () => {
+  // The caller falls back to the floored day field, so returning null has to be
+  // distinguishable from returning "0h" — which is a real, different answer.
+  for (const v of [null, undefined, NaN, Infinity, -Infinity]) {
+    assert.equal(Calc.attemptLabel(v), null, String(v));
+  }
+  // A clock that went backwards is clamped, not shown as negative time.
+  assert.equal(Calc.attemptLabel(-5 * HOUR), '0h');
+});
+
 // ── The re-lock window ──────────────────────────────────────────────────────
 
 test('the re-lock window reads every value localStorage can hold', () => {

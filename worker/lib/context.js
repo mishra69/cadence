@@ -16,7 +16,31 @@
 //    app's history. So the default carries all the *data* and none of the
 //    subject. `term` opts into naming it; it is never stored server-side.
 import { BUCKETS } from './time.js';
-import { DAY_MS } from './time.js';
+import { DAY_MS, HOUR_MS } from './time.js';
+
+/**
+ * Below this an attempt is described in hours, at or above it in whole days.
+ *
+ * MUST match HOURS_BELOW_MS in frontend/js/calc.js, which applies the same rule
+ * to the stats row. The reasoning for two days is written out there. Same
+ * duplication as derive()/logicalDate, and the same discipline: a test in each
+ * suite pins the boundary so the two cannot drift apart silently.
+ */
+const HOURS_BELOW_MS = 2 * DAY_MS;
+
+/** "47 hours" / "6 days" — floored in both units, never rounded up. */
+function attemptPhrase(ms, fallbackDays) {
+  if (ms == null || !Number.isFinite(ms)) return plural(fallbackDays, 'day');
+  const safe = Math.max(0, ms);
+  return safe < HOURS_BELOW_MS
+    ? plural(Math.floor(safe / HOUR_MS), 'hour')
+    : plural(Math.floor(safe / DAY_MS), 'day');
+}
+
+/** "1 day", "2 days" — the summary is prose, and read by a model as prose. */
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
 
 const BUCKET_LABEL = {
   morning: 'morning', afternoon: 'afternoon', evening: 'evening', late: 'late night',
@@ -120,18 +144,25 @@ export function buildContext({ mode, stats, events, term = null, includeNotes = 
   lines.push('', '---', '', 'Where things stand:');
 
   if (stats.streak_days != null) {
-    let line = `- ${stats.streak_days} days since the last slip`;
+    let line = `- ${attemptPhrase(stats.streak_ms, stats.streak_days)} since the last slip`;
     if (stats.confidence?.unverified) {
-      line += ` (unconfirmed for ${stats.confidence.unverified_days} of them — I wasn't logging)`;
+      // Names its own unit rather than saying "6 of them". "Them" used to be
+      // unambiguous when the streak was always in days; now the sentence can
+      // open with "47 hours", and "6 of them" would silently mean six hours.
+      line += ` (unconfirmed for ${plural(stats.confidence.unverified_days, 'day')}` +
+        ` — I wasn't logging)`;
     }
     lines.push(line);
   } else if (stats.has_data) {
-    lines.push(`- Tracking for ${stats.days_tracked} days; no slip logged yet`);
+    lines.push(`- Tracking for ${plural(stats.days_tracked, 'day')}; no slip logged yet`);
   }
 
-  if (stats.best_days != null) lines.push(`- Longest stretch so far: ${stats.best_days} days`);
+  if (stats.best_days != null) {
+    lines.push(`- Longest stretch so far: ${attemptPhrase(stats.best_ms, stats.best_days)}`);
+  }
   if (stats.median_attempt_days != null) {
-    lines.push(`- Typical stretch: ${stats.median_attempt_days} days (across ${stats.attempt_count} attempts)`);
+    lines.push(`- Typical stretch: ${attemptPhrase(stats.median_attempt_ms, stats.median_attempt_days)}` +
+      ` (across ${plural(stats.attempt_count, 'attempt')})`);
   }
   lines.push(`- Last 30 days: ${stats.relapses_30d} slips, ${stats.urges_30d} urges logged`);
 

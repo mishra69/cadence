@@ -214,12 +214,42 @@ var Calc = (function () {
     return n;
   }
 
+  // Below this, an attempt is reported in hours; at or above it, in whole days.
+  //
+  // The threshold is about proportion, not taste. Flooring a 47-hour attempt to
+  // "1d" discards 49% of it; flooring a 5.9-day attempt to "5d" discards 15%.
+  // Two days is where the lost remainder stops dominating the number. It also
+  // keeps the stats row from turning into "5d 21h · 12d 4h · 3d 18h", which is
+  // noisier without being more useful.
+  //
+  // MUST match HOURS_BELOW_MS in worker/lib/context.js, which renders the same
+  // figures as prose for the share summary. Same duplication as logicalDate and
+  // the worker's derive(), and the same rule: a test pins both to the boundary.
+  var HOURS_BELOW_MS = 2 * DAY_MS;
+
+  /**
+   * An attempt length, as a person would say it.
+   *
+   * Floors rather than rounds in both units, so the number never claims more
+   * than elapsed: 47.9 hours is "47h", not "48h" — which would read as two
+   * days — and 1.9 days is "1d". Overstating a streak is the one direction
+   * this must not fail in.
+   */
+  function attemptLabel(ms) {
+    if (ms == null || !Number.isFinite(ms)) return null;
+    var safe = Math.max(0, ms);
+    if (safe < HOURS_BELOW_MS) return Math.floor(safe / HOUR_MS) + 'h';
+    return Math.floor(safe / DAY_MS) + 'd';
+  }
+
   return {
     DAY_MS: DAY_MS,
     ACTIONS: ACTIONS,
     readAction: readAction,
     inboxIsStale: inboxIsStale,
     relockAfter: relockAfter,
+    HOURS_BELOW_MS: HOURS_BELOW_MS,
+    attemptLabel: attemptLabel,
     HOUR_MS: HOUR_MS,
     SETTLE_MS: SETTLE_MS,
     logicalDate: logicalDate,

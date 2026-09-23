@@ -112,14 +112,22 @@ const App = (() => {
   function renderStats(s) {
     const dash = '—';
     const d = v => (v == null ? dash : `${v}d`);
+    // Attempt lengths read in hours under two days, so 28h and 47h stop
+    // collapsing onto the same "1d" as a 24h one. Falls back to the floored
+    // day field if an older worker is answering — a deploy can land mid-session
+    // and the panel should not go blank over it.
+    const span = (ms, fallbackDays) =>
+      Calc.attemptLabel(ms) ?? d(fallbackDays);
 
     // Never a relapse on record: there is no streak to report, so the slot says
-    // how long there has been data rather than inventing a number.
+    // how long there has been data rather than inventing a number. Days, not
+    // hours — this is length of record, not an attempt, and the two should not
+    // look like the same measurement.
     $('stat-current').textContent = s.streak_days == null
       ? (s.has_data ? d(s.days_tracked) : dash)
-      : d(s.streak_days);
-    $('stat-best').textContent = d(s.best_days);
-    $('stat-typical').textContent = d(s.median_attempt_days);
+      : span(s.streak_ms, s.streak_days);
+    $('stat-best').textContent = span(s.best_ms, s.best_days);
+    $('stat-typical').textContent = span(s.median_attempt_ms, s.median_attempt_days);
 
     tumblerFrom = s.last_relapse_ts ?? null;
     renderTumbler();
