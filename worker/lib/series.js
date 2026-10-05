@@ -25,7 +25,9 @@ function dayRange(from, to) {
 const parseDay = s => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d); };
 
 /**
- * Whether an event says anything about how the day *went*.
+ * Whether an event is evidence for the coverage figure — the share of a week
+ * the app can vouch for when it reports a count.
+ *
  *
  * A morning check-in does not. It is answered on waking and reports on the
  * night before; it is evidence the user was here at 09:00, not that nothing
@@ -33,10 +35,9 @@ const parseDay = s => { const [y, m, d] = s.split('-').map(Number); return Date.
  * the strength of one tap at breakfast, before the day had happened. Today's
  * cell did exactly that.
  *
- * Shared by the ribbon's state and the coverage figure so the two cannot
- * disagree about what counts. A relapse is always evidence; so is an urge, a
- * note, or the evening review, each of which is the user present *during* the
- * day.
+ * The ribbon is stricter still: there a day is blue only once reviewed (see
+ * dayRibbon). Coverage asks a weaker question — was the user present during
+ * the day — so an urge or a note counts here. A relapse always counts.
  */
 export const isDayEvidence = e => e.kind !== 'morning_check';
 
@@ -139,10 +140,9 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
   const byDay = new Map();
   for (const e of events) {
     const d = e.logical_day || derive(e.ts_utc, tz, boundary).logical_day;
-    if (!byDay.has(d)) byDay.set(d, { count: 0, confirmed: false, events: 0, evidence: 0 });
+    if (!byDay.has(d)) byDay.set(d, { count: 0, confirmed: false, events: 0 });
     const rec = byDay.get(d);
     rec.events++;
-    if (isDayEvidence(e)) rec.evidence++;
     if (e.kind === 'relapse') rec.count++;
     if (e.kind === 'daily') rec.confirmed = true;
   }
@@ -172,10 +172,16 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
       day,
       outside,
       future,
-      // 'clean' needs evidence about the day itself. A day with only a morning
-      // check-in stays grey, but says why — "nothing logged" would be untrue.
-      state: future ? 'pad' : !rec?.evidence ? 'unknown' : rec.count > 0 ? 'relapse' : 'clean',
-      morning_only: !future && !!rec && !rec.evidence,
+      // Blue is a claim — "no slip that day" — and the only thing that makes
+      // it is the evening review. A morning check-in at 09:00, or an urge at
+      // 15:00, shows you were there; neither says how the day ended. Those days
+      // stay grey and carry `logged` instead, which the client draws as the
+      // outline: something was recorded, the day was not reviewed.
+      state: future ? 'pad' : !rec ? 'unknown'
+        : rec.count > 0 ? 'relapse'
+        : rec.confirmed ? 'clean'
+        : 'unknown',
+      logged: !future && !!rec && rec.count === 0 && !rec.confirmed,
       count: rec?.count || 0,
       confirmed: !!rec?.confirmed,
       events: rec?.events || 0,

@@ -720,7 +720,7 @@ button, .btn, [role="button"], input, select, textarea, a {
 .ribbon-multi3 { background: var(--viz-slip-3); }
 /* The cell under the finger. A ring rather than a colour change, so scrubbing
    never restates the value it is being used to read.
-   Two classes deep on purpose: .ribbon-confirmed sets box-shadow too and is
+   Two classes deep on purpose: .ribbon-logged sets box-shadow too and is
    declared later, so this needs the specificity to win rather than the order.
    The ring is drawn outside the cell, hence the stacking context — without it
    the next grid item paints over the half of the ring that sits in the gap. */
@@ -729,7 +729,7 @@ button, .btn, [role="button"], input, select, textarea, a {
   position: relative;
   z-index: 1;
 }
-.ribbon-cell.ribbon-confirmed.is-focus {
+.ribbon-cell.ribbon-logged.is-focus {
   box-shadow: inset 0 0 0 1px var(--bg), 0 0 0 2px var(--text);
 }
 /* Days outside the window, or that have not happened. Not a state — absence of
@@ -743,9 +743,13 @@ button, .btn, [role="button"], input, select, textarea, a {
     var(--viz-slip-2) 0 50%,
     var(--viz-slip-3) 50% 100%);
 }
-/* A confirmed day is a property of the record, not a fourth state — so it rides
-   as a ring rather than taking a colour of its own. */
-.ribbon-confirmed { box-shadow: inset 0 0 0 1px var(--text); }
+/* Something was recorded, the day was not reviewed. A property of the record
+   rather than a fourth colour, so it rides as an outline — and it only lands on
+   grey cells, because a slip or a reviewed day already says more than this.
+   It used to mean "reviewed"; that moved into the blue itself, which now
+   appears only after the evening review. */
+.ribbon-logged,
+.swatch-logged { box-shadow: inset 0 0 0 1px var(--text); }
 
 /* ── Sheet (log / history / settings) ────────────────────────────────────── */
 

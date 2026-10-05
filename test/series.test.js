@@ -100,34 +100,45 @@ test('the smoothed series appears later than the 7-day one', () => {
 });
 
 // The other half of the same hazard: a week you did not log produces a genuine
-test('a morning check-in alone does not make a day read as no slip', () => {
-  // It used to: any event turned a day blue, so one tap at breakfast declared
-  // "logged, no slip" for a day that had barely started. A morning answer is
-  // about the night before; it is evidence of presence at 09:00 and nothing
-  // about the rest of the day.
-  const day = dayRibbon({
-    events: [ev(0, 'morning_check', 9)], tz: IST, settings: S, now: NOW, days: 14,
-  }).find(c => c.day === '2026-09-03');
+test('blue means reviewed: nothing short of the evening review declares no slip', () => {
+  // A morning check-in at 09:00 used to turn the day blue before it had
+  // happened. So would an urge at 15:00. Each shows presence, not how the day
+  // ended — only the review says that.
+  const cell = events => dayRibbon({ events, tz: IST, settings: S, now: NOW, days: 14 })
+    .find(c => c.day === '2026-09-03');
 
-  assert.equal(day.state, 'unknown', 'grey, not blue');
-  assert.equal(day.morning_only, true, 'but marked, so it is not called "nothing logged"');
-  assert.equal(day.events, 1, 'the event is still counted');
-  assert.equal(day.confirmed, false);
-
-  // Anything from during the day is evidence, and the day turns blue as before.
-  for (const kind of ['urge', 'daily', 'note']) {
-    const c = dayRibbon({
-      events: [ev(0, 'morning_check', 9), ev(0, kind, 15)], tz: IST, settings: S, now: NOW, days: 14,
-    }).find(x => x.day === '2026-09-03');
-    assert.equal(c.state, 'clean', kind);
-    assert.equal(c.morning_only, false, kind);
+  for (const kind of ['morning_check', 'urge', 'note']) {
+    const c = cell([ev(0, kind, kind === 'morning_check' ? 9 : 15)]);
+    assert.equal(c.state, 'unknown', `${kind}: grey, not blue`);
+    assert.equal(c.logged, true, `${kind}: but outlined — something was recorded`);
   }
 
-  // A slip is a slip whatever else was logged.
-  const slip = dayRibbon({
-    events: [ev(0, 'morning_check', 9), ev(0, 'relapse', 15)], tz: IST, settings: S, now: NOW, days: 14,
-  }).find(x => x.day === '2026-09-03');
-  assert.equal(slip.state, 'relapse');
+  const reviewed = cell([ev(0, 'morning_check', 9), ev(0, 'daily', 21)]);
+  assert.equal(reviewed.state, 'clean');
+  assert.equal(reviewed.logged, false, 'blue already says more than the outline would');
+
+  const slip = cell([ev(0, 'morning_check', 9), ev(0, 'relapse', 15)]);
+  assert.equal(slip.state, 'relapse', 'a slip is a slip, reviewed or not');
+  assert.equal(slip.logged, false);
+
+  const empty = cell([ev(5, 'daily')]);
+  assert.equal(empty.state, 'unknown');
+  assert.equal(empty.logged, false, 'nothing recorded, no outline');
+});
+
+test('the outline only ever lands on grey', () => {
+  // If it could appear on a coloured cell it would be redundant there — every
+  // coloured day has something recorded — and stop carrying information.
+  const events = [];
+  for (let d = 0; d < 20; d++) {
+    if (d % 4 === 0) events.push(ev(d, 'relapse'));
+    if (d % 3 === 0) events.push(ev(d, 'daily'));
+    if (d % 2 === 0) events.push(ev(d, 'urge'));
+    events.push(ev(d, 'morning_check', 9));
+  }
+  const r = dayRibbon({ events, tz: IST, settings: S, now: NOW, days: 21 });
+  assert.ok(r.some(c => c.logged), 'the case is exercised');
+  assert.ok(r.filter(c => c.logged).every(c => c.state === 'unknown'));
 });
 
 test('coverage does not count a morning check-in as the day being logged', () => {
@@ -243,8 +254,10 @@ test('a day with no events is unknown, never clean', () => {
 test('confirmation is tracked separately from what happened', () => {
   const r = dayRibbon({ events: [ev(0, 'urge')], tz: IST, settings: S, now: NOW, days: 14 });
   const today = r.filter(d => !d.outside).pop();
-  assert.equal(today.state, 'clean', 'an urge is not a slip');
-  assert.equal(today.confirmed, false, 'but the day was never confirmed');
+  assert.notEqual(today.state, 'relapse', 'an urge is not a slip');
+  assert.equal(today.state, 'unknown', 'nor, unreviewed, a declared clean day');
+  assert.equal(today.confirmed, false);
+  assert.equal(today.logged, true);
 });
 
 test('an event just after the 04:00 boundary lands on the right day', () => {

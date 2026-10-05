@@ -154,16 +154,22 @@ test('a day says what it is, and a slip carries the weight', () => {
     { what: 'slip', emphasis: 'strong', confirmed: false });
   assert.deepEqual(words({ state: 'relapse', count: 3, confirmed: true }),
     { what: '3 slips', emphasis: 'strong', confirmed: true });
-  assert.deepEqual(words({ state: 'clean', count: 0 }),
-    { what: 'logged, no slip', emphasis: 'plain', confirmed: false });
+  assert.deepEqual(words({ state: 'clean', count: 0, confirmed: true }),
+    { what: 'reviewed, no slip', emphasis: 'plain', confirmed: false });
   // Absence is de-emphasised for the same reason it is grey in the grid.
   assert.deepEqual(words({ state: 'unknown', count: 0 }),
     { what: 'nothing logged', emphasis: 'dim', confirmed: false });
 });
 
-test('a morning-only day says what it was, not that nothing was logged', () => {
-  assert.deepEqual(words({ state: 'unknown', count: 0, morning_only: true }),
-    { what: 'morning check-in only', emphasis: 'dim', confirmed: false });
+test('an unreviewed day says something was logged, not that nothing was', () => {
+  assert.deepEqual(words({ state: 'unknown', count: 0, logged: true }),
+    { what: 'logged, not reviewed', emphasis: 'dim', confirmed: false });
+});
+
+test('"confirmed" is only spelled out on a slip day, where it adds something', () => {
+  // On a blue day it is what blue means; saying it again is noise.
+  assert.equal(words({ state: 'clean', count: 0, confirmed: true }).confirmed, false);
+  assert.equal(words({ state: 'relapse', count: 1, confirmed: true }).confirmed, true);
 });
 
 // ── Notification deep links ─────────────────────────────────────────────────

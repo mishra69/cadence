@@ -142,16 +142,17 @@ var Calc = (function () {
     return {
       what: d.count > 1 ? d.count + ' slips'
         : d.state === 'relapse' ? 'slip'
-        : d.state === 'clean' ? 'logged, no slip'
-        // Grey like an empty day, because it says no more about the day — but
-        // "nothing logged" would be false, so it names what was.
-        : d.morning_only ? 'morning check-in only'
+        : d.state === 'clean' ? 'reviewed, no slip'
+        // Grey like an empty day, because it says no more about how the day
+        // went — but "nothing logged" would be false.
+        : d.logged ? 'logged, not reviewed'
         : 'nothing logged',
       // A slip is the thing being looked for, so it carries the weight; the grey
       // is de-emphasised for the same reason it is grey in the grid.
       emphasis: d.count > 1 || d.state === 'relapse' ? 'strong'
         : d.state === 'clean' ? 'plain' : 'dim',
-      confirmed: !!d.confirmed,
+      // Only worth saying on a slip day: on a blue day it is what blue means.
+      confirmed: d.state === 'relapse' && !!d.confirmed,
     };
   }
 

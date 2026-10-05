@@ -118,14 +118,18 @@
     return Array.from({ length: n }, (_, i) => {
       const future = i >= n - futureTail;
       const unknown = i < 28;
-      const state = future ? 'pad' : unknown ? 'unknown' : (i % 5 === 0 ? 'clean' : 'relapse');
+      // Every kind of cell: slips, reviewed days (blue), logged-but-unreviewed
+      // days (grey with the outline), and days with nothing at all.
+      const kind = future ? 'pad' : unknown ? 'empty' : ['relapse', 'clean', 'relapse', 'logged', 'relapse', 'empty'][i % 6];
+      const state = kind === 'pad' ? 'pad' : kind === 'relapse' ? 'relapse' : kind === 'clean' ? 'clean' : 'unknown';
       // Both multi-slip steps, since the ramp between them is the thing that
       // has been got wrong twice and can only be judged by eye.
       const count = state !== 'relapse' ? 0 : i % 17 === 0 ? 3 : i % 11 === 0 ? 2 : 1;
       return {
         day: iso(start + i * DAY), state, count, future, outside: false,
-        confirmed: !future && !unknown && i % 3 === 0,
-        events: state === 'unknown' || future ? 0 : 1,
+        confirmed: kind === 'clean' || (kind === 'relapse' && i % 4 === 0),
+        logged: kind === 'logged',
+        events: kind === 'empty' || kind === 'pad' ? 0 : 1,
       };
     });
   }
