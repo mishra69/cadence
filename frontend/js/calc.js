@@ -143,6 +143,9 @@ var Calc = (function () {
       what: d.count > 1 ? d.count + ' slips'
         : d.state === 'relapse' ? 'slip'
         : d.state === 'clean' ? 'logged, no slip'
+        // Grey like an empty day, because it says no more about the day — but
+        // "nothing logged" would be false, so it names what was.
+        : d.morning_only ? 'morning check-in only'
         : 'nothing logged',
       // A slip is the thing being looked for, so it carries the weight; the grey
       // is de-emphasised for the same reason it is grey in the grid.

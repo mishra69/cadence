@@ -100,30 +100,51 @@ test('the smoothed series appears later than the 7-day one', () => {
 });
 
 // The other half of the same hazard: a week you did not log produces a genuine
-test('a morning check-in logs the day without confirming it', () => {
-  // Two different questions, and they must not be answered by the same event.
-  // "Was this day logged at all" is what coverage asks, and a morning answer is
-  // a yes. "Was this day reviewed" is what the ribbon's ring asks, and it is
-  // not — a day is reviewed at the sweep, not at 8am before it has happened.
+test('a morning check-in alone does not make a day read as no slip', () => {
+  // It used to: any event turned a day blue, so one tap at breakfast declared
+  // "logged, no slip" for a day that had barely started. A morning answer is
+  // about the night before; it is evidence of presence at 09:00 and nothing
+  // about the rest of the day.
   const day = dayRibbon({
-    events: [ev(0, 'morning_check')], tz: IST, settings: S, now: NOW, days: 14,
-  }).find(c => !c.future && c.events > 0);
+    events: [ev(0, 'morning_check', 9)], tz: IST, settings: S, now: NOW, days: 14,
+  }).find(c => c.day === '2026-09-03');
 
-  assert.equal(day.events, 1, 'the day has something logged against it');
-  assert.equal(day.confirmed, false, 'but it was never reviewed');
-  assert.equal(day.state, 'clean', 'and no slip, so it still reads as clean');
+  assert.equal(day.state, 'unknown', 'grey, not blue');
+  assert.equal(day.morning_only, true, 'but marked, so it is not called "nothing logged"');
+  assert.equal(day.events, 1, 'the event is still counted');
+  assert.equal(day.confirmed, false);
 
-  const reviewed = dayRibbon({
-    events: [ev(0, 'morning_check'), ev(0, 'daily')], tz: IST, settings: S, now: NOW, days: 14,
-  }).find(c => !c.future && c.events > 0);
-  assert.equal(reviewed.confirmed, true);
+  // Anything from during the day is evidence, and the day turns blue as before.
+  for (const kind of ['urge', 'daily', 'note']) {
+    const c = dayRibbon({
+      events: [ev(0, 'morning_check', 9), ev(0, kind, 15)], tz: IST, settings: S, now: NOW, days: 14,
+    }).find(x => x.day === '2026-09-03');
+    assert.equal(c.state, 'clean', kind);
+    assert.equal(c.morning_only, false, kind);
+  }
 
-  // Coverage is deliberately kind-agnostic, so the morning still counts there.
-  const s = rollingRelapses({
-    events: [ev(30, 'daily'), ...[0, 1, 2, 3, 4, 5, 6].map(d => ev(d, 'morning_check'))],
+  // A slip is a slip whatever else was logged.
+  const slip = dayRibbon({
+    events: [ev(0, 'morning_check', 9), ev(0, 'relapse', 15)], tz: IST, settings: S, now: NOW, days: 14,
+  }).find(x => x.day === '2026-09-03');
+  assert.equal(slip.state, 'relapse');
+});
+
+test('coverage does not count a morning check-in as the day being logged', () => {
+  // Same question as the ribbon, asked of the 7-day count: how far can the app
+  // vouch for a zero? A week of breakfast taps says nothing about the week, so
+  // the line should fade exactly as it would for a week not logged at all.
+  const mornings = rollingRelapses({
+    events: [ev(30, 'daily'), ...[0, 1, 2, 3, 4, 5, 6].map(d => ev(d, 'morning_check', 9))],
     tz: IST, settings: S, now: NOW, days: 30,
   });
-  assert.equal(s[s.length - 1].coverage_7d, 1, 'a week of mornings is still a week logged');
+  assert.equal(mornings[mornings.length - 1].coverage_7d, 0);
+
+  const reviewed = rollingRelapses({
+    events: [ev(30, 'daily'), ...[0, 1, 2, 3, 4, 5, 6].map(d => ev(d, 'daily'))],
+    tz: IST, settings: S, now: NOW, days: 30,
+  });
+  assert.equal(reviewed[reviewed.length - 1].coverage_7d, 1);
 });
 
 // zero, indistinguishable from a good week unless coverage travels with it.

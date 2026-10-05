@@ -25,6 +25,22 @@ function dayRange(from, to) {
 const parseDay = s => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d); };
 
 /**
+ * Whether an event says anything about how the day *went*.
+ *
+ * A morning check-in does not. It is answered on waking and reports on the
+ * night before; it is evidence the user was here at 09:00, not that nothing
+ * happened after. Counting it made a day turn blue — "logged, no slip" — on
+ * the strength of one tap at breakfast, before the day had happened. Today's
+ * cell did exactly that.
+ *
+ * Shared by the ribbon's state and the coverage figure so the two cannot
+ * disagree about what counts. A relapse is always evidence; so is an urge, a
+ * note, or the evening review, each of which is the user present *during* the
+ * day.
+ */
+export const isDayEvidence = e => e.kind !== 'morning_check';
+
+/**
  * Relapses in a trailing window, per day, expressed **per week** in both cases.
  *
  * The two windows share a unit on purpose. A 7-day count and a 28-day count are
@@ -67,7 +83,7 @@ export function rollingRelapses({ events, tz, settings, now = Date.now(), days =
   const anyByDay = new Set();
   for (const e of events) {
     const d = e.logical_day || derive(e.ts_utc, tz, boundary).logical_day;
-    anyByDay.add(d);
+    if (isDayEvidence(e)) anyByDay.add(d);
     if (e.kind === 'relapse') relapsesByDay.set(d, (relapsesByDay.get(d) || 0) + 1);
   }
 
@@ -123,9 +139,10 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
   const byDay = new Map();
   for (const e of events) {
     const d = e.logical_day || derive(e.ts_utc, tz, boundary).logical_day;
-    if (!byDay.has(d)) byDay.set(d, { count: 0, confirmed: false, events: 0 });
+    if (!byDay.has(d)) byDay.set(d, { count: 0, confirmed: false, events: 0, evidence: 0 });
     const rec = byDay.get(d);
     rec.events++;
+    if (isDayEvidence(e)) rec.evidence++;
     if (e.kind === 'relapse') rec.count++;
     if (e.kind === 'daily') rec.confirmed = true;
   }
@@ -155,7 +172,10 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
       day,
       outside,
       future,
-      state: future ? 'pad' : !rec ? 'unknown' : rec.count > 0 ? 'relapse' : 'clean',
+      // 'clean' needs evidence about the day itself. A day with only a morning
+      // check-in stays grey, but says why — "nothing logged" would be untrue.
+      state: future ? 'pad' : !rec?.evidence ? 'unknown' : rec.count > 0 ? 'relapse' : 'clean',
+      morning_only: !future && !!rec && !rec.evidence,
       count: rec?.count || 0,
       confirmed: !!rec?.confirmed,
       events: rec?.events || 0,

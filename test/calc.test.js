@@ -161,6 +161,11 @@ test('a day says what it is, and a slip carries the weight', () => {
     { what: 'nothing logged', emphasis: 'dim', confirmed: false });
 });
 
+test('a morning-only day says what it was, not that nothing was logged', () => {
+  assert.deepEqual(words({ state: 'unknown', count: 0, morning_only: true }),
+    { what: 'morning check-in only', emphasis: 'dim', confirmed: false });
+});
+
 // ── Notification deep links ─────────────────────────────────────────────────
 
 test('a deep link yields its action and the notification that sent it', () => {
