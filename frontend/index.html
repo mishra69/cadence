@@ -104,8 +104,13 @@
               aria-label="Account and settings"></button>
     </div>
     <div class="hero-actions">
-      <button id="btn-log-urge" class="btn-tap btn-tap-urge">
-        <span class="btn-tap-label">Log an urge</span>
+      <!-- Was "Log an urge": two urges in seven weeks against 31 relapses, so
+           half of Home went to the least-used action in the app. Urges are
+           still loggable from the evening review and still a kind on the
+           server; only this slot moved. Relapse keeps its position so the tap
+           that matters most is where the hand already expects it. -->
+      <button id="btn-log-release" class="btn-tap btn-tap-release">
+        <span class="btn-tap-label">Log a release</span>
       </button>
       <button id="btn-log-relapse" class="btn-tap btn-tap-relapse">
         <span class="btn-tap-label">Log a relapse</span>
@@ -258,7 +263,14 @@
       <div class="chips" id="mode-chips"></div>
     </div>
 
-    <div class="field">
+    <!-- Release only. Its own question: the situational tags below describe an
+         episode of the habit, and "alone" would mean something else here. -->
+    <div class="field" id="field-release" hidden>
+      <span class="field-label">How <span class="optional">optional</span></span>
+      <div class="chips" id="release-chips"></div>
+    </div>
+
+    <div class="field" id="field-context">
       <span class="field-label">What's going on <span class="optional">optional</span></span>
       <div class="chips" id="context-chips"></div>
     </div>

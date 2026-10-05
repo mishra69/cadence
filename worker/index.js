@@ -8,7 +8,7 @@ import { getSettings, updateSettings, recordActivity } from './lib/settings.js';
 import { onSeen, backfillWindow } from './lib/activity.js';
 import {
   normalizeEvent, insertEvent, listEvents, deleteEvent,
-  ValidationError, CONTEXT_TAGS, MODE_TAGS, KINDS,
+  ValidationError, CONTEXT_TAGS, MODE_TAGS, RELEASE_TAGS, KINDS,
 } from './lib/events.js';
 import { getStats } from './lib/stats.js';
 import { derive } from './lib/time.js';
@@ -74,6 +74,7 @@ async function route(request, env, url) {
       configured: !!(env.GOOGLE_CLIENT_ID && env.TOKEN_SECRET),
       context_tags: CONTEXT_TAGS,
       mode_tags: MODE_TAGS,
+      release_tags: RELEASE_TAGS,
       kinds: KINDS,
     });
   }

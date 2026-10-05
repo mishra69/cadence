@@ -13,7 +13,14 @@ import { derive, isValidTimeZone, DAY_MS } from './time.js';
 // whole day confirmed before it had happened, and left the two rituals
 // indistinguishable in History. Separating them is what makes `confirmed_days`
 // mean what it says.
-export const KINDS = ['urge', 'relapse', 'daily', 'morning_check', 'note'];
+//
+// `release` is a sexual release that is NOT the habit being tracked — with a
+// partner, or over the phone. It is deliberately not a relapse: it never moves
+// the streak or the attempt figures, which measure the habit and nothing else.
+// But it is recorded, because leaving it out made long gaps read as more
+// willpower than they were. Where it matters, the charts show it inside the gap
+// rather than letting it disappear.
+export const KINDS = ['urge', 'relapse', 'release', 'daily', 'morning_check', 'note'];
 
 // Kinds that may carry a morning reading. `daily` is here for rows written
 // before the split — the client no longer puts one there — and accepting it
@@ -42,7 +49,12 @@ export const CONTEXT_TAGS = ['alone', 'in_bed', 'phone', 'tired', 'bored', 'stre
 // same NULL-vs-zero distinction intensity and satisfaction already respect.
 export const MODE_TAGS = ['porn', 'imagination'];
 
-export const ALL_TAGS = [...CONTEXT_TAGS, ...MODE_TAGS];
+// How a release happened. Optional, and valid only on a release: the
+// situational tags above describe an episode of the habit, and "alone" or
+// "on my phone" would mean something else entirely here.
+export const RELEASE_TAGS = ['in_person', 'remote'];
+
+export const ALL_TAGS = [...CONTEXT_TAGS, ...MODE_TAGS, ...RELEASE_TAGS];
 
 const MAX_NOTE = 2000;
 const FUTURE_SKEW_MS = 5 * 60 * 1000;   // phone clocks drift; a few minutes is not a lie
@@ -153,6 +165,11 @@ export function normalizeEvent(raw, settings, now = Date.now()) {
       // On a check-in or a note there is no episode for this to describe.
       if (MODE_TAGS.includes(t) && kind !== 'urge' && kind !== 'relapse') {
         throw new ValidationError(`${t} is only valid on an urge or a relapse`);
+      }
+      if (RELEASE_TAGS.includes(t) !== (kind === 'release')) {
+        throw new ValidationError(kind === 'release'
+          ? `${t} does not describe a release`
+          : `${t} is only valid on a release`);
       }
     }
     // Sorted so the stored JSON is canonical and two identical tag sets compare

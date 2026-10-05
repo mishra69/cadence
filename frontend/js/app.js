@@ -17,6 +17,7 @@ const App = (() => {
   let config = {
     context_tags: ['alone', 'in_bed', 'phone', 'tired', 'bored', 'stressed'],
     mode_tags: ['porn', 'imagination'],
+    release_tags: ['in_person', 'remote'],
     google_client_id: null,
   };
   let draft = null;
@@ -31,6 +32,7 @@ const App = (() => {
     alone: 'alone', in_bed: 'in bed', phone: 'on my phone',
     tired: 'tired', bored: 'bored', stressed: 'stressed',
     porn: 'porn', imagination: 'imagination',
+    in_person: 'in person', remote: 'phone or video',
   };
 
   // ── Screen plumbing ───────────────────────────────────────────────────────
@@ -231,7 +233,7 @@ const App = (() => {
       const kind = document.createElement('div');
       kind.className = `ev-kind ${ev.kind}`;
       kind.textContent = {
-        urge: 'Urge', relapse: 'Relapse', daily: 'Day confirmed',
+        urge: 'Urge', relapse: 'Relapse', release: 'Release', daily: 'Day confirmed',
         morning_check: 'Morning check-in', note: 'Note',
       }[ev.kind] || ev.kind;
       if (ev.kind === 'urge' && ev.intensity != null) kind.textContent += ` · ${ev.intensity}/5`;
@@ -1037,13 +1039,17 @@ const App = (() => {
       vouchOnSave: !!opts.recalled,
     };
 
-    $('log-title').textContent = kind === 'relapse' ? 'Record a relapse' : 'Log an urge';
+    $('log-title').textContent = {
+      relapse: 'Record a relapse', release: 'Log a release', urge: 'Log an urge',
+    }[kind] || 'Log';
     // Each of these is valid on exactly one kind, and the server rejects the
     // other combinations outright.
     $('field-intensity').hidden = kind !== 'urge';
     $('field-satisfaction').hidden = kind !== 'relapse';
     // Urges too: an episode can involve the material without ending in a relapse.
     $('field-mode').hidden = !(kind === 'urge' || kind === 'relapse');
+    $('field-release').hidden = kind !== 'release';
+    $('field-context').hidden = kind === 'release';
     $('note').value = '';
     $('note').placeholder = kind === 'relapse'
       ? 'Anything about the lead-up? (optional)'
@@ -1054,12 +1060,15 @@ const App = (() => {
     // Never both: the return flow already asks which *day*, at whole-day
     // resolution, and offering an hour on top would imply a precision that
     // flow's whole design says the memory does not have.
-    $('field-hour').hidden = draft.kind !== 'relapse' || draft.recalled;
+    // A release too: the 04:00 boundary moves its day just as it does a
+    // relapse's, and where it falls inside a gap is what the gap chart shows.
+    $('field-hour').hidden = !(draft.kind === 'relapse' || draft.kind === 'release') || draft.recalled;
     if (!$('field-hour').hidden) renderHour();
     renderScale('intensity');
     renderScale('satisfaction');
     renderChips();
     renderModeChips();
+    renderReleaseChips();
     renderRequired();
     show('log');
   }
@@ -1224,6 +1233,25 @@ const App = (() => {
         draft.context.has(tag) ? draft.context.delete(tag) : draft.context.add(tag);
         renderModeChips();
         renderRequired();
+      };
+      wrap.append(b);
+    }
+  }
+
+  // Optional, and a separate group so it can never be mistaken for the
+  // episode tags. Writes into the same `context` set; the server rejects these
+  // on anything but a release.
+  function renderReleaseChips() {
+    const wrap = $('release-chips');
+    wrap.innerHTML = '';
+    for (const tag of (config.release_tags || [])) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = TAG_LABELS[tag] || tag;
+      b.setAttribute('aria-pressed', String(draft.context.has(tag)));
+      b.onclick = () => {
+        draft.context.has(tag) ? draft.context.delete(tag) : draft.context.add(tag);
+        renderReleaseChips();
       };
       wrap.append(b);
     }
@@ -1637,7 +1665,7 @@ const App = (() => {
   // ── Wiring ────────────────────────────────────────────────────────────────
 
   function wire() {
-    $('btn-log-urge').onclick = () => openLog('urge');
+    $('btn-log-release').onclick = () => openLog('release');
     $('btn-log-relapse').onclick = () => openLog('relapse');
     $('btn-log-cancel').onclick = () => show('home');
     $('btn-log-save').onclick = () => saveLog();

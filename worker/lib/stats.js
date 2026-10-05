@@ -91,10 +91,11 @@ export async function getStats(db, userId, tz, settings, now = Date.now()) {
          SUM(CASE WHEN kind = 'urge'    AND ts_utc >= ? THEN 1 ELSE 0 END) AS urges_30d,
          SUM(CASE WHEN kind = 'urge'    AND ts_utc >= ? THEN 1 ELSE 0 END) AS urges_90d,
          SUM(CASE WHEN kind = 'relapse' AND ts_utc >= ? THEN 1 ELSE 0 END) AS relapses_30d,
-         SUM(CASE WHEN kind = 'relapse' AND ts_utc >= ? THEN 1 ELSE 0 END) AS relapses_90d
+         SUM(CASE WHEN kind = 'relapse' AND ts_utc >= ? THEN 1 ELSE 0 END) AS relapses_90d,
+         SUM(CASE WHEN kind = 'release' AND ts_utc >= ? THEN 1 ELSE 0 END) AS releases_30d
        FROM events WHERE user_id = ?`
     ).bind(since(7 * DAY_MS), since(30 * DAY_MS), since(90 * DAY_MS),
-           since(30 * DAY_MS), since(90 * DAY_MS), userId),
+           since(30 * DAY_MS), since(90 * DAY_MS), since(30 * DAY_MS), userId),
   ]);
 
   const relapses = (relapseRes.results || []).map(r => r.ts_utc);
@@ -173,6 +174,10 @@ export async function getStats(db, userId, tz, settings, now = Date.now()) {
 
     // Trailing, so one slip doesn't erase three months.
     relapses_30d: c.relapses_30d || 0,
+    // Reported beside relapses, never inside them. A release is not the habit,
+    // so it moves no figure above — but a long gap with releases in it was not
+    // all willpower, and anything summarising the gaps should be able to say so.
+    releases_30d: c.releases_30d || 0,
     urges_7d: c.urges_7d || 0,
     urges_30d: c.urges_30d || 0,
 

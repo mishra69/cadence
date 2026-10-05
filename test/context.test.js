@@ -292,3 +292,11 @@ test('slips from before the field was required are excluded, not counted as no',
   assert.match(out, /2 involved porn/);
   assert.ok(!/Of 4 slips/.test(out), 'unanswered slips must not pad the denominator');
 });
+
+test('releases get their own line, in neutral words, and never as slips', () => {
+  const out = build({ stats: { ...STATS, releases_30d: 2 } });
+  assert.match(out, /2 releases in the last 30 days that are not the habit/);
+  assert.match(out, /3 slips, 40 urges logged/, 'the slip count is untouched');
+  assert.ok(!/in person|phone or video|partner|intercourse/i.test(out), 'no detail leaves');
+  assert.ok(!/release/.test(build()), 'and no line at all when there were none');
+});

@@ -83,6 +83,8 @@ CREATE TABLE events (
   id           TEXT PRIMARY KEY,      -- client-generated UUID → idempotent retries
   user_id      TEXT NOT NULL,
   kind         TEXT NOT NULL,         -- 'urge' | 'relapse' | 'daily' | 'note'
+                                      -- Amended 2026-10-05: + 'morning_check' (split from
+                                      -- 'daily', 2026-09-15) and 'release'. See §7.
 
   -- source of truth
   ts_utc       INTEGER NOT NULL,      -- epoch ms — when it happened
@@ -458,6 +460,22 @@ without asking for one tap per urge.
 ---
 
 ## 7. Phase 4 — risk model (only after ~200 urge events)
+
+> **Amended 2026-10-05 — urges demoted from Home; a `release` kind added.**
+>
+> Production after seven weeks: **2 urges against 31 relapses**, the last urge on
+> 8 Sep. The ~200-urge threshold this phase waits on will not be reached at that
+> rate, and urges had half of Home. The "Log an urge" button is replaced; urges
+> remain a kind, remain loggable from the evening review, and the two existing
+> rows are untouched. This phase stays deferred, now for a measured reason.
+>
+> `release` is a sexual release that is *not* the habit — with a partner, or over
+> the phone. It never moves the streak or the attempt figures, which measure the
+> habit alone. It is recorded because leaving it out made long gaps read as more
+> willpower than they were: the gap chart marks releases inside the gaps, the
+> ribbon marks the day, and the share summary gives them their own line. Whether
+> a release lengthens the gap to the next relapse becomes askable once there is
+> enough of it.
 
 **Split the prediction problem, because the two halves have wildly different data density.**
 

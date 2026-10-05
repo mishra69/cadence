@@ -157,7 +157,9 @@ var Calc = (function () {
     };
   }
 
-  var ACTIONS = ['urge', 'relapse', 'sweep', 'morning'];
+  // 'urge' stays: its Home button is gone, but a deep link or shortcut to it
+  // should still open the sheet rather than silently do nothing.
+  var ACTIONS = ['urge', 'relapse', 'release', 'sweep', 'morning'];
 
   /**
    * The action and notification id carried by a notification's deep link.

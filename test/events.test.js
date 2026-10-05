@@ -354,3 +354,34 @@ test('lock intent survives an unrelated settings patch', async () => {
   assert.equal(s.lock_intent, 'wanted');
   assert.equal(s.day_boundary_hour, 3);
 });
+
+// ── Releases ────────────────────────────────────────────────────────────────
+
+test('a release is its own kind, with its own optional tags', () => {
+  const ev = normalizeEvent(
+    { id: uuid(), kind: 'release', ts_utc: NOW, tz: IST, context: ['remote'] }, S, NOW);
+  assert.equal(ev.kind, 'release');
+  assert.equal(ev.context, '["remote"]');
+  // Untagged is fine: the tags are optional.
+  assert.equal(normalizeEvent({ id: uuid(), kind: 'release', ts_utc: NOW, tz: IST }, S, NOW).context, null);
+});
+
+test('release tags and episode tags do not cross', () => {
+  // "alone" or "on my phone" describe an episode of the habit and would mean
+  // something else on a release; "in person" means nothing on a relapse.
+  for (const t of ['alone', 'phone', 'porn']) {
+    assert.throws(() => normalizeEvent(
+      { id: uuid(), kind: 'release', ts_utc: NOW, tz: IST, context: [t] }, S, NOW), ValidationError, t);
+  }
+  for (const kind of ['relapse', 'urge', 'daily']) {
+    assert.throws(() => normalizeEvent(
+      { id: uuid(), kind, ts_utc: NOW, tz: IST, context: ['in_person'] }, S, NOW), ValidationError, kind);
+  }
+});
+
+test('a release takes none of a relapse\'s fields', () => {
+  for (const extra of [{ satisfaction: 3 }, { intensity: 2 }, { morning_wood: 0 }]) {
+    assert.throws(() => normalizeEvent(
+      { id: uuid(), kind: 'release', ts_utc: NOW, tz: IST, ...extra }, S, NOW), ValidationError);
+  }
+});

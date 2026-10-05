@@ -27,6 +27,9 @@ const Charts = (() => {
     return n;
   };
 
+  // "release" / "2 releases" — one wording wherever a release is mentioned.
+  const releasesWord = n => (n === 1 ? 'release' : `${n} releases`);
+
   const fmtDay = d => new Date(`${d}T12:00:00Z`)
     .toLocaleDateString([], { day: 'numeric', month: 'short' });
 
@@ -307,7 +310,8 @@ const Charts = (() => {
    */
   const cellTitle = d => {
     const w = Calc.dayWords(d);
-    return `${fmtDay(d.day)} — ${w.what}${w.confirmed ? ', day confirmed' : ''}`;
+    return `${fmtDay(d.day)} — ${w.what}${d.releases ? `, ${releasesWord(d.releases)}` : ''}` +
+      `${w.confirmed ? ', day confirmed' : ''}`;
   };
 
   const cellTip = d => {
@@ -315,7 +319,9 @@ const Charts = (() => {
     const what = w.emphasis === 'strong' ? `<b>${w.what}</b>`
       : w.emphasis === 'dim' ? `<span class="ro-dim">${w.what}</span>`
       : w.what;
-    return `${what}${w.confirmed ? ' <span class="ro-dim">· confirmed</span>' : ''}` +
+    return `${what}` +
+      `${d.releases ? ` <span class="ro-dim">· ${releasesWord(d.releases)}</span>` : ''}` +
+      `${w.confirmed ? ' <span class="ro-dim">· confirmed</span>' : ''}` +
       `<br><span class="ro-dim">${fmtDay(d.day)}</span>`;
   };
 
@@ -345,6 +351,9 @@ const Charts = (() => {
       // grey cell that is grey because the day is not over, not because the
       // app was forgotten.
       if (d.in_progress) cell.classList.add('ribbon-today');
+      // A shape, not a colour: the colour already answers "used the app, and
+      // did I slip", and a release is neither a slip nor anything more than use.
+      if (d.releases) cell.classList.add('ribbon-release');
       grid.append(cell);
     }
     p.wrap.append(grid);
@@ -374,7 +383,9 @@ const Charts = (() => {
       `<span><i class="swatch-multi"></i>more than one</span>` +
       `<span><i style="background:${CLEAN()}"></i>no slip</span>` +
       `<span><i class="swatch-today" style="background:${UNKNOWN()}"></i>today so far</span>` +
-      `<span><i style="background:${UNKNOWN()}"></i>nothing logged</span>`;
+      `<span><i style="background:${UNKNOWN()}"></i>nothing logged</span>` +
+      // Only when there is one to explain.
+      (days.some(d => d.releases) ? `<span><i class="key-release"></i>release</span>` : '');
     host.append(legend);
 
   }
@@ -450,6 +461,19 @@ const Charts = (() => {
         : { d: barPath(bx(i), top, bw), fill: CLEAN() }));
     });
 
+    // Releases inside a gap, at the hour they happened. The bar is still one
+    // attempt — a release never ends it — but a long bar with these in it was
+    // not all willpower, and this is what stops it being read that way. Same
+    // ringed dot as the ribbon, so it is recognisably the same thing.
+    data.forEach((g, i) => {
+      for (const off of g.releases || []) {
+        svg.append(el('circle', {
+          cx: bx(i) + bw / 2, cy: y(off), r: 2.4,
+          fill: SURFACE(), stroke: css('--text'), 'stroke-width': 1.2,
+        }));
+      }
+    });
+
     if (typical_ms != null) {
       // Solid hairline in ink, never dashed. Its label is in the key below the
       // plot rather than at the line's end: bars run the full width, so any
@@ -494,7 +518,10 @@ const Charts = (() => {
       const when = g.in_progress
         ? `<span class="ro-dim">so far · since ${fmtWhen(g.from_ts)}</span>`
         : `<span class="ro-dim">${fmtWhen(g.from_ts)} → ${fmtWhen(g.to_ts)}</span>`;
-      p.show(`${value}<br>${when}`, ((bx(i) + bw / 2) / W) * box.width);
+      const rel = g.releases?.length
+        ? `${SEP}<span class="ro-dim">includes ${g.releases.length === 1 ? 'a release' : releasesWord(g.releases.length)}</span>`
+        : '';
+      p.show(`${value}${rel}<br>${when}`, ((bx(i) + bw / 2) / W) * box.width);
     });
 
     // A key for the two non-obvious marks, not a legend box — one series needs
@@ -506,6 +533,9 @@ const Charts = (() => {
     }
     if (data.some(g => g.in_progress)) {
       key.innerHTML += `<span><i class="key-hollow" style="border-color:${CLEAN()}"></i>current, still running</span>`;
+    }
+    if (data.some(g => g.releases?.length)) {
+      key.innerHTML += `<span><i class="key-release"></i>release, not counted as a slip</span>`;
     }
     if (key.innerHTML) host.append(key);
   }

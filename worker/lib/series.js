@@ -135,10 +135,11 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
   for (const e of events) {
     const d = e.logical_day || derive(e.ts_utc, tz, boundary).logical_day;
     if (firstDay == null || d < firstDay) firstDay = d;
-    if (!byDay.has(d)) byDay.set(d, { count: 0, confirmed: false, events: 0 });
+    if (!byDay.has(d)) byDay.set(d, { count: 0, confirmed: false, events: 0, releases: 0 });
     const rec = byDay.get(d);
     rec.events++;
     if (e.kind === 'relapse') rec.count++;
+    if (e.kind === 'release') rec.releases++;
     if (e.kind === 'daily') rec.confirmed = true;
   }
 
@@ -187,6 +188,9 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
         : 'clean',
       in_progress: isToday && !!rec && rec.count === 0,
       count: rec?.count || 0,
+      // A mark on the cell, never a colour: the colour answers "used the app,
+      // and did I slip", and a release is neither a slip nor more than use.
+      releases: rec?.releases || 0,
       confirmed: !!rec?.confirmed,
       events: rec?.events || 0,
     };
@@ -215,9 +219,18 @@ export function relapseGaps({ events, tz, settings, now = Date.now(), days = 63,
   const dayOf = ts => derive(ts, tz, boundary).logical_day;
 
   const rs = events.filter(e => e.kind === 'relapse').map(e => e.ts_utc).sort((a, b) => a - b);
+  const rels = events.filter(e => e.kind === 'release').map(e => e.ts_utc).sort((a, b) => a - b);
+
+  // The releases that fell inside a gap, as offsets from its start. A release
+  // never ends a gap — the streak measures the habit — but a long gap with
+  // releases in it was not all willpower, and the chart marks them so it is
+  // not read that way.
+  const within = (from, to) => rels.filter(t => t > from && t < to).map(t => t - from);
 
   const all = [];
-  for (let i = 1; i < rs.length; i++) all.push({ from_ts: rs[i - 1], to_ts: rs[i], ms: rs[i] - rs[i - 1] });
+  for (let i = 1; i < rs.length; i++) {
+    all.push({ from_ts: rs[i - 1], to_ts: rs[i], ms: rs[i] - rs[i - 1], releases: within(rs[i - 1], rs[i]) });
+  }
 
   const sorted = all.map(g => g.ms).sort((a, b) => a - b);
   const m = Math.floor(sorted.length / 2);
@@ -230,7 +243,10 @@ export function relapseGaps({ events, tz, settings, now = Date.now(), days = 63,
 
   if (rs.length && last >= today) {
     const from = rs[rs.length - 1];
-    gaps.push({ from_ts: from, to_ts: null, ms: Math.max(0, now - from), in_progress: true });
+    gaps.push({
+      from_ts: from, to_ts: null, ms: Math.max(0, now - from), in_progress: true,
+      releases: within(from, now + 1),
+    });
   }
 
   return { gaps, typical_ms };

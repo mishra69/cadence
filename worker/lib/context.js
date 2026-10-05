@@ -165,6 +165,14 @@ export function buildContext({ mode, stats, events, term = null, includeNotes = 
       ` (across ${plural(stats.attempt_count, 'attempt')})`);
   }
   lines.push(`- Last 30 days: ${stats.relapses_30d} slips, ${stats.urges_30d} urges logged`);
+  // Said in its own line and in neutral words: a release is not the habit, so
+  // it is not a slip and moves none of the figures above — but a chatbot reading
+  // a long gap should know it was not all willpower. Nothing finer than the
+  // word goes out, whatever tags were recorded.
+  if (stats.releases_30d) {
+    lines.push(`- Also ${plural(stats.releases_30d, 'release')} in the last 30 days that are not the habit` +
+      ` itself, so not counted as slips — but they may account for some of the longer gaps.`);
+  }
 
   if (dist.total) {
     const busiest = BUCKETS

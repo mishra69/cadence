@@ -131,6 +131,12 @@
         day: iso(start + i * DAY), state, count, future, outside: false,
         confirmed: (kind === 'clean' || kind === 'relapse') && i % 4 === 0,
         in_progress: kind === 'today',
+        // Releases on every cell colour, the palest yellow included, since the
+        // dot has to read on all of them.
+        // Never on a grey day: logging a release *is* using the app, so a day
+        // with one is blue (or orange) — or today, still in progress.
+        releases: (kind === 'relapse' || kind === 'clean' || kind === 'today') && i % 5 === 2 ? 1
+          : count > 1 && i % 2 === 0 ? 1 : 0,
         before_record: kind === 'pad' && !future,
         events: kind === 'empty' || kind === 'pad' ? 0 : 1,
       };
@@ -159,7 +165,11 @@
   function gapSet(hours, { running = null } = {}) {
     const H = 3_600_000;
     let t = Date.UTC(2026, 7, 1, 15);
-    const gaps = hours.map(h => { const g = { from_ts: t, to_ts: t + h * H, ms: h * H, in_progress: false }; t += h * H; return g; });
+    const gaps = hours.map((h, k) => {
+      // A release partway through some of the longer gaps.
+      const releases = h >= 40 && k % 2 === 0 ? [Math.round(h * 0.45) * H] : [];
+      const g = { from_ts: t, to_ts: t + h * H, ms: h * H, in_progress: false, releases }; t += h * H; return g;
+    });
     if (running != null) gaps.push({ from_ts: t, to_ts: null, ms: running * H, in_progress: true });
     const done = [...hours].sort((a, b) => a - b), m = Math.floor(done.length / 2);
     const typical = !done.length ? null : (done.length % 2 ? done[m] : (done[m - 1] + done[m]) / 2) * H;

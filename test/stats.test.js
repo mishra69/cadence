@@ -256,3 +256,24 @@ test('stats carries the lock intent, since the warning renders before settings l
     (await getStats(db, U, IST, { ...S, lock_intent: 'wanted' }, NOW)).lock_intent,
     'wanted');
 });
+
+test('a release never moves the streak or any attempt figure', async () => {
+  // The streak measures the habit, and a release is not the habit.
+  const H = 3_600_000;
+  const db = makeDb();
+  await add(db, 'relapse', NOW - 5 * DAY_MS);
+  await add(db, 'relapse', NOW - 3 * DAY_MS);
+  const before = await getStats(db, U, IST, S, NOW);
+
+  await add(db, 'release', NOW - 4 * DAY_MS);
+  await add(db, 'release', NOW - 1 * DAY_MS);
+  await add(db, 'release', NOW - 2 * H);
+  const after = await getStats(db, U, IST, S, NOW);
+
+  for (const k of ['streak_days', 'streak_ms', 'best_days', 'best_ms', 'median_attempt_days',
+                   'median_attempt_ms', 'attempt_count', 'relapses_30d', 'last_relapse_ts']) {
+    assert.equal(after[k], before[k], k);
+  }
+  assert.equal(after.releases_30d, 3, 'but they are counted, separately');
+  assert.equal(before.releases_30d, 0);
+});

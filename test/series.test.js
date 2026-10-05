@@ -394,3 +394,41 @@ test('paging back is unaffected: every day in a past window is plotted', () => {
   const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: 30, endDay: '2026-08-04' });
   assert.equal(s.length, 30);
 });
+
+// ── Releases on the charts ──────────────────────────────────────────────────
+
+test('releases sit inside the gap they fell in, without ending it', () => {
+  const t = NOW - 10 * DAY_MS;
+  const events = [rAt(t), { kind: 'release', ts_utc: t + 30 * H }, { kind: 'release', ts_utc: t + 50 * H }, rAt(t + 96 * H)];
+  const { gaps } = relapseGaps({ events, tz: IST, settings: S, now: NOW });
+  const g = gaps.find(x => !x.in_progress);
+  assert.equal(g.ms, 96 * H, 'still one 96h gap — a release is not a relapse');
+  assert.deepEqual([...g.releases].map(o => o / H), [30, 50], 'offsets from the gap start');
+});
+
+test('a release in the running attempt is shown too', () => {
+  const t = NOW - 40 * H;
+  const { gaps } = relapseGaps({ events: [rAt(t), { kind: 'release', ts_utc: NOW - 5 * H }], tz: IST, settings: S, now: NOW });
+  const live = gaps.at(-1);
+  assert.equal(live.in_progress, true);
+  assert.deepEqual([...live.releases].map(o => o / H), [35]);
+});
+
+test('a release marks the ribbon cell without changing its colour', () => {
+  const r = dayRibbon({
+    events: [ev(10, 'daily'), ev(3, 'release', 22), ev(2, 'relapse', 9), ev(2, 'release', 23)],
+    tz: IST, settings: S, now: NOW, days: 14,
+  });
+  const day = d => r.find(c => c.day === d);
+  assert.equal(day('2026-08-31').state, 'clean', 'used the app, no slip: blue');
+  assert.equal(day('2026-08-31').releases, 1);
+  assert.equal(day('2026-09-01').state, 'relapse', 'a slip is still a slip');
+  assert.equal(day('2026-09-01').releases, 1);
+  assert.equal(day('2026-09-02').releases, 0);
+});
+
+test('a release is not a slip on the rate chart', () => {
+  const events = [ev(40, 'daily'), ...[1, 2, 3].map(d => ev(d, 'release'))];
+  const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: 30 });
+  assert.equal(s.at(-1).per_week_7d, 0);
+});

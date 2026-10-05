@@ -315,6 +315,9 @@ button, .btn, [role="button"], input, select, textarea, a {
 .btn-tap:active { transform: scale(0.985); filter: brightness(1.12); }
 .btn-tap-label { font-size: 24px; font-weight: 600; letter-spacing: 0.01em; }
 
+/* Inherited from the urge button it replaced, so the two Home targets stay as
+   distinct as they were. */
+.btn-tap-release,
 .btn-tap-urge {
   background: var(--accent);
   border-color: var(--accent);
@@ -743,6 +746,26 @@ button, .btn, [role="button"], input, select, textarea, a {
     var(--viz-slip-2) 0 50%,
     var(--viz-slip-3) 50% 100%);
 }
+/* A release that day: a ringed dot, dark centre and light ring, so it stays
+   visible on every cell colour from grey to the palest multi-slip yellow. The
+   same mark sits inside the gap-chart bars, and the same in the key. */
+.ribbon-release { position: relative; }
+.ribbon-release::after {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 7px; height: 7px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: 0 0 0 1.25px var(--text);
+}
+.chart-legend i.key-release {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--bg); box-shadow: 0 0 0 1.25px var(--text);
+  margin-left: 1px; vertical-align: 0;
+}
+
 /* Today, with something recorded but the day not yet over. Grey everywhere
    else means the app was forgotten that day; today is the one grey cell that
    means "not finished", and the outline is what tells the two apart. It lands
