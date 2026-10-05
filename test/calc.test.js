@@ -309,3 +309,57 @@ test('calc.js reaches for no browser-only globals', () => {
   assert.equal(typeof Calc.tumblerState, 'function');
   assert.doesNotThrow(() => loadCalc());
 });
+
+// ── The gap chart ───────────────────────────────────────────────────────────
+
+test('a touch lands on the band it is in, edges included', () => {
+  // 10 bars across 286 units starting at 28, drawn at 2x.
+  const g = { boxLeft: 0, boxWidth: 640, viewWidth: 320, padLeft: 28, innerWidth: 286, count: 10 };
+  const at = x => Calc.bandIndex({ ...g, clientX: x });
+  assert.equal(at(2 * 28 + 1), 0, 'just inside the first band');
+  assert.equal(at(2 * (28 + 28.6) - 1), 0, 'its far edge is still the first bar');
+  assert.equal(at(2 * (28 + 28.6) + 1), 1);
+  assert.equal(at(2 * (28 + 286) - 1), 9, 'the last band');
+  assert.equal(at(-100), 0, 'off the left clamps');
+  assert.equal(at(9999), 9, 'off the right clamps');
+});
+
+test('bands and points disagree, which is why bars need their own mapping', () => {
+  // A touch in the right half of the first band. Bars: still bar 0. Points:
+  // rounds to point 1 out of 10 — the wrong bar.
+  const g = { boxLeft: 0, boxWidth: 320, viewWidth: 320, padLeft: 0, innerWidth: 300, count: 10 };
+  assert.equal(Calc.bandIndex({ ...g, clientX: 25 }), 0);
+  assert.equal(Calc.scrubIndex({ ...g, clientX: 25 }), 1);
+});
+
+// Spread for the same reason as words(): an array made in calc.js's vm realm
+// carries that realm's Array.prototype, and deepEqual fails on identity alone.
+const ticksH = ms => [...Calc.gapTicks(ms)].map(t => t / HOUR);
+
+test('gap ticks fall on whole days and always clear the tallest bar', () => {
+  const ticks = ticksH;
+  assert.deepEqual(ticks(62.5 * HOUR), [0, 24, 48, 72], 'your current longest');
+  assert.deepEqual(ticks(48 * HOUR), [0, 24, 48]);
+  assert.deepEqual(ticks(20 * DAY).filter((_, i) => i).every(h => h % 120 === 0), true,
+    'a long gap steps by 5 days, not 24 gridlines');
+  assert.ok(Calc.gapTicks(20 * DAY).length <= 6);
+  for (const ms of [1, 30 * HOUR, 62.5 * HOUR, 9 * DAY, 40 * DAY]) {
+    assert.ok(Calc.gapTicks(ms).at(-1) >= ms, `top tick clears ${ms / HOUR}h`);
+  }
+});
+
+test('sub-day gaps get half-day ticks rather than one gridline', () => {
+  assert.deepEqual(ticksH(10 * HOUR), [0, 12]);
+  assert.deepEqual(ticksH(20 * HOUR), [0, 12, 24]);
+  assert.deepEqual(ticksH(0), [0, 12], 'never a single tick');
+});
+
+test('the gap tooltip keeps every hour, where the stats row drops them', () => {
+  assert.equal(Calc.preciseSpan(62.5 * HOUR), '2d 14h', 'attemptLabel would say "2d"');
+  assert.equal(Calc.attemptLabel(62.5 * HOUR), '2d');
+  assert.equal(Calc.preciseSpan(31 * HOUR), '31h', 'under two days it reads the same as the row');
+  assert.equal(Calc.preciseSpan(48 * HOUR), '2d 0h');
+  assert.equal(Calc.preciseSpan(47 * HOUR + 59 * 60_000), '47h', 'floors, never rounds up');
+  assert.equal(Calc.preciseSpan(19 * DAY + 5 * HOUR), '19d 5h');
+  assert.equal(Calc.preciseSpan(null), null);
+});

@@ -217,6 +217,41 @@ var Calc = (function () {
     return n;
   }
 
+  /**
+   * Which bar a touch is over, for a chart of bars in equal bands.
+   *
+   * Not scrubIndex: that one places points on the edges of the plot, first
+   * at the left and last at the right. Bars sit in the *middle* of n equal
+   * bands, so the same x maps to a different index — reading one with the
+   * other is off by up to half a bar, worst at the ends where it matters.
+   * The whole band is the hit target, not just the bar, so a thin bar is
+   * still easy to land on.
+   */
+  function bandIndex(opts) {
+    var count = opts.count;
+    if (count <= 1) return 0;
+    var vx = ((opts.clientX - opts.boxLeft) / opts.boxWidth) * opts.viewWidth;
+    var i = Math.floor(((vx - opts.padLeft) / opts.innerWidth) * count);
+    return Math.max(0, Math.min(count - 1, i));
+  }
+
+  /**
+   * Y-axis ticks for a chart of attempt lengths, in ms.
+   *
+   * Whole days, because that is the boundary the streak itself counts in and
+   * the one worth seeing a bar cross. Never more than about five, so the axis
+   * stays recessive. Everything under a day gets half-days instead, or a
+   * bunch of sub-day gaps would sit under a single gridline with no scale.
+   * The top tick is at or above the tallest value, so nothing overflows.
+   */
+  function gapTicks(maxMs) {
+    var top = Math.max(0, maxMs || 0);
+    var step = top <= DAY_MS ? DAY_MS / 2 : Math.max(1, Math.ceil(top / DAY_MS / 4)) * DAY_MS;
+    var out = [0];
+    while (out[out.length - 1] < top || out.length < 2) out.push(out[out.length - 1] + step);
+    return out;
+  }
+
   // Below this, an attempt is reported in hours; at or above it, in whole days.
   //
   // The threshold is about proportion, not taste. Flooring a 47-hour attempt to
@@ -245,6 +280,19 @@ var Calc = (function () {
     return Math.floor(safe / DAY_MS) + 'd';
   }
 
+  /**
+   * An attempt length to the hour, for a reading the user has asked for
+   * precisely — the gap chart's tooltip. Unlike attemptLabel, which drops the
+   * remainder past two days to keep the stats row short, this never throws
+   * hours away: 62.5h is "2d 14h", not "2d". Still floors, never rounds up.
+   */
+  function preciseSpan(ms) {
+    if (ms == null || !Number.isFinite(ms)) return null;
+    var h = Math.floor(Math.max(0, ms) / HOUR_MS);
+    if (ms < HOURS_BELOW_MS) return h + 'h';
+    return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
+  }
+
   return {
     DAY_MS: DAY_MS,
     ACTIONS: ACTIONS,
@@ -253,6 +301,9 @@ var Calc = (function () {
     relockAfter: relockAfter,
     HOURS_BELOW_MS: HOURS_BELOW_MS,
     attemptLabel: attemptLabel,
+    preciseSpan: preciseSpan,
+    bandIndex: bandIndex,
+    gapTicks: gapTicks,
     HOUR_MS: HOUR_MS,
     SETTLE_MS: SETTLE_MS,
     logicalDate: logicalDate,

@@ -148,6 +148,37 @@
         'Empty state. It should say what it is waiting for, not just that it is empty.',
         h => Charts.rolling(h, series(4, { nullHead: 4, smoothFrom: null })));
 
+  /** Attempts from a list of hour-lengths; the last one optionally still running. */
+  function gapSet(hours, { running = null } = {}) {
+    const H = 3_600_000;
+    let t = Date.UTC(2026, 7, 1, 15);
+    const gaps = hours.map(h => { const g = { from_ts: t, to_ts: t + h * H, ms: h * H, in_progress: false }; t += h * H; return g; });
+    if (running != null) gaps.push({ from_ts: t, to_ts: null, ms: running * H, in_progress: true });
+    const done = [...hours].sort((a, b) => a - b), m = Math.floor(done.length / 2);
+    const typical = !done.length ? null : (done.length % 2 ? done[m] : (done[m - 1] + done[m]) / 2) * H;
+    return { gaps, typical_ms: typical };
+  }
+
+  bench('Gaps — an ordinary month',
+        'Mostly a day or two, one longer run. Scrub: the pill gives the length and both ends to the hour. The typical line must match the stats-row figure for the same attempts.',
+        h => Charts.gaps(h, gapSet([26, 31, 9.7, 48, 28, 62.5, 33, 20, 41, 30, 27, 36, 29], { running: 14 })));
+
+  bench('Gaps — sub-day cadence',
+        'Everything under a day. Ticks drop to half-days so the bars are not all crammed under one gridline.',
+        h => Charts.gaps(h, gapSet([10, 14, 8, 20, 11, 16, 9, 13])));
+
+  bench('Gaps — one long attempt',
+        'A 19-day run among short ones. Gridlines step by days, not one per 24h, and the short bars stay visible at the bottom.',
+        h => Charts.gaps(h, gapSet([30, 28, 456, 26, 40, 31], { running: 70 })));
+
+  bench('Gaps — many attempts',
+        'Sixty bars. They narrow but keep their 2px gaps, so it reads as separate events and not a solid block.',
+        h => Charts.gaps(h, gapSet(Array.from({ length: 60 }, (_, i) => 18 + ((i * 37) % 40)))));
+
+  bench('Gaps — only the running attempt',
+        'One relapse on record: no completed gap, so no chart. The stats row already shows the single number.',
+        h => Charts.gaps(h, gapSet([], { running: 30 })));
+
   bench('Ribbon — full grid',
         'Seven rows, one column per week. Check the top row especially: the tooltip must sit above it, never over it.',
         h => Charts.ribbon(h, ribbonDays(70)));

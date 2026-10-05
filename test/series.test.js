@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rollingRelapses, dayRibbon } from '../worker/lib/series.js';
+import { rollingRelapses, dayRibbon, relapseGaps } from '../worker/lib/series.js';
 import { fromLocal, DAY_MS } from '../worker/lib/time.js';
 import { DEFAULT_SETTINGS } from '../worker/lib/settings.js';
 
@@ -261,4 +261,64 @@ test('future days in the trailing week are padding, not unknown data', () => {
   const r = dayRibbon({ events: [ev(0, 'daily')], tz: IST, settings: S, now: NOW, days: 63 });
   const future = r.filter(d => d.day > '2026-09-03');
   assert.ok(future.every(d => d.state === 'pad'), 'tomorrow is not a missed day');
+});
+
+// ── Gaps between relapses ───────────────────────────────────────────────────
+
+const H = 3_600_000;
+const rAt = ts => ({ kind: 'relapse', ts_utc: ts });
+
+test('each gap is measured to the millisecond, not floored to days', () => {
+  const t = NOW - 5 * DAY_MS;
+  const events = [rAt(t), rAt(t + 28 * H), rAt(t + 28 * H + 47 * H)];
+  const { gaps } = relapseGaps({ events, tz: IST, settings: S, now: NOW });
+  const done = gaps.filter(g => !g.in_progress);
+  assert.deepEqual(done.map(g => g.ms / H), [28, 47], 'two cadences that both used to read "1d"');
+});
+
+test('the attempt still running is included, and marked as such', () => {
+  // A lower bound that is still growing. Drawn like a finished gap it would
+  // understate the attempt in a way that looks final.
+  const t = NOW - 10 * H;
+  const { gaps } = relapseGaps({ events: [rAt(t - 30 * H), rAt(t)], tz: IST, settings: S, now: NOW });
+  const live = gaps.at(-1);
+  assert.equal(live.in_progress, true);
+  assert.equal(live.to_ts, null);
+  assert.equal(live.ms, 10 * H);
+});
+
+test('paging back leaves out the running attempt', () => {
+  const t = NOW - 2 * DAY_MS;
+  const { gaps } = relapseGaps({
+    events: [rAt(t - 30 * H), rAt(t)], tz: IST, settings: S, now: NOW, endDay: '2026-08-20',
+  });
+  assert.ok(gaps.every(g => !g.in_progress));
+});
+
+test('gaps are placed by the day they ended, so they page with the other charts', () => {
+  const events = [rAt(NOW - 80 * DAY_MS), rAt(NOW - 70 * DAY_MS), rAt(NOW - 3 * DAY_MS)];
+  const { gaps } = relapseGaps({ events, tz: IST, settings: S, now: NOW, days: 30 });
+  // The 10-day gap ended 70 days ago, outside a 30-day window. The 67-day one
+  // ended 3 days ago, inside it — even though it began long before.
+  const done = gaps.filter(g => !g.in_progress);
+  assert.equal(done.length, 1);
+  assert.equal(done[0].ms, 67 * DAY_MS);
+});
+
+test('the reference line is the same number the stats row calls typical', async () => {
+  // Drawn directly under "typical", so it has to be the all-time median —
+  // not the window's — or the screen contradicts itself.
+  const { attemptStats } = await import('../worker/lib/stats.js');
+  const t = NOW - 90 * DAY_MS;
+  const ts = [0, 20, 48, 75, 400, 430, 2000].map(h => t + h * H);
+  const { typical_ms } = relapseGaps({ events: ts.map(rAt), tz: IST, settings: S, now: NOW, days: 14 });
+  assert.equal(typical_ms, attemptStats(ts, NOW).median_attempt_ms);
+});
+
+test('no relapses, or one, has no completed gap and no typical', () => {
+  assert.deepEqual(relapseGaps({ events: [], tz: IST, settings: S, now: NOW }),
+    { gaps: [], typical_ms: null });
+  const one = relapseGaps({ events: [rAt(NOW - 5 * H)], tz: IST, settings: S, now: NOW });
+  assert.equal(one.typical_ms, null);
+  assert.equal(one.gaps.filter(g => !g.in_progress).length, 0);
 });

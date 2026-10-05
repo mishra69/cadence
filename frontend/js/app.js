@@ -189,6 +189,7 @@ const App = (() => {
       return;   // offline: the panels keep whatever they last drew
     }
     Charts.rolling($('chart-rolling'), s.rolling);
+    Charts.gaps($('chart-gaps'), s);
     Charts.ribbon($('chart-ribbon'), s.ribbon);
 
     // From the ribbon, not the rolling series: the title sits above the ribbon

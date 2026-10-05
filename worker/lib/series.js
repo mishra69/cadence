@@ -182,3 +182,46 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
     };
   });
 }
+
+/**
+ * The gap between each relapse and the next, to the millisecond.
+ *
+ * Each attempt is placed by the logical day it *ended*, and only those ending
+ * inside the window are returned, so this pages with the rate chart and the
+ * ribbon rather than on its own clock. The attempt still running is included
+ * when the window reaches today, marked `in_progress` — it is a lower bound
+ * that is still growing, and drawing it like a finished gap would understate
+ * it in a way that looks final.
+ *
+ * `typical_ms` is the median over *all* completed attempts, not the window's:
+ * it is drawn as the reference line, and it has to be the same number the
+ * stats row calls "typical" directly above, or the two will disagree on screen.
+ */
+export function relapseGaps({ events, tz, settings, now = Date.now(), days = 63, endDay = null }) {
+  const boundary = settings.day_boundary_hour;
+  const last = endDay || derive(now, tz, boundary).logical_day;
+  const start = new Date(parseDay(last) - (days - 1) * DAY_MS).toISOString().slice(0, 10);
+  const today = derive(now, tz, boundary).logical_day;
+  const dayOf = ts => derive(ts, tz, boundary).logical_day;
+
+  const rs = events.filter(e => e.kind === 'relapse').map(e => e.ts_utc).sort((a, b) => a - b);
+
+  const all = [];
+  for (let i = 1; i < rs.length; i++) all.push({ from_ts: rs[i - 1], to_ts: rs[i], ms: rs[i] - rs[i - 1] });
+
+  const sorted = all.map(g => g.ms).sort((a, b) => a - b);
+  const m = Math.floor(sorted.length / 2);
+  const typical_ms = !sorted.length ? null
+    : sorted.length % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2;
+
+  const gaps = all
+    .filter(g => { const d = dayOf(g.to_ts); return d >= start && d <= last; })
+    .map(g => ({ ...g, in_progress: false }));
+
+  if (rs.length && last >= today) {
+    const from = rs[rs.length - 1];
+    gaps.push({ from_ts: from, to_ts: null, ms: Math.max(0, now - from), in_progress: true });
+  }
+
+  return { gaps, typical_ms };
+}

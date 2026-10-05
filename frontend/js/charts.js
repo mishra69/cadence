@@ -375,5 +375,136 @@ const Charts = (() => {
 
   }
 
-  return { rolling, ribbon };
+  // ── Time between relapses ─────────────────────────────────────────────────
+
+  // From the instant, in local time — not via toISOString(), which is a UTC
+  // date and labels a 01:00 relapse in India with the day before.
+  const fmtTsDay = ts => new Date(ts).toLocaleDateString([], { day: 'numeric', month: 'short' });
+  const fmtWhen = ts => new Date(ts).toLocaleString([], {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+
+  /**
+   * One bar per attempt, oldest on the left, height in hours.
+   *
+   * The stats row says "typical 31h"; this is the distribution behind that one
+   * number. The reference line is the very same median, so the line and the
+   * word above it can never disagree.
+   *
+   * One series, so one colour and no legend box — the title names it. The
+   * attempt still running is drawn hollow rather than in a second colour: it is
+   * the same kind of thing, just unfinished, and a lower bound that is still
+   * growing must not look as settled as a finished one.
+   *
+   * Gridlines fall on whole days, because the day boundary is the one worth
+   * seeing a bar cross. Bars are capped in width and leave a 2px gap, so a long
+   * run of short attempts reads as a run of separate events, not a block.
+   */
+  function gaps(host, { gaps: data = [], typical_ms = null } = {}) {
+    host.innerHTML = '';
+    // A single bar is a stat tile pretending to be a chart, and the stats row
+    // already is that tile.
+    if (!data.some(g => !g.in_progress)) {
+      return empty(host, 'A gap needs two relapses to measure.');
+    }
+
+    const W = 320, H = 132, P = { t: 10, r: 10, b: 20, l: 28 };
+    const iw = W - P.l - P.r, ih = H - P.t - P.b;
+    const n = data.length;
+    const ticks = Calc.gapTicks(Math.max(...data.map(g => g.ms), typical_ms ?? 0));
+    const max = ticks[ticks.length - 1];
+
+    const svg = el('svg', {
+      viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img', class: 'chart-scrub',
+      'aria-label': `Time between relapses, ${n} attempts`,
+    });
+    const y = v => P.t + ih - (v / max) * ih;
+    const band = iw / n;
+    const bw = Math.max(1, Math.min(20, band - 2));
+    const bx = i => P.l + band * i + (band - bw) / 2;
+
+    for (const t of ticks) {
+      svg.append(el('line', { x1: P.l, y1: y(t), x2: W - P.r, y2: y(t), stroke: GRID(), 'stroke-width': 1 }));
+      const label = el('text', { x: P.l - 5, y: y(t) + 3, fill: INK(), 'font-size': 8, 'text-anchor': 'end' });
+      label.textContent = t === 0 ? '0' : Calc.attemptLabel(t);
+      svg.append(label);
+    }
+
+    /** Rounded at the data end, square at the baseline. */
+    const barPath = (x, top, w) => {
+      const h = P.t + ih - top;
+      const r = Math.min(4, w / 2, h);
+      const b = P.t + ih;
+      return `M${x},${b} L${x},${top + r} Q${x},${top} ${x + r},${top} ` +
+        `L${x + w - r},${top} Q${x + w},${top} ${x + w},${top + r} L${x + w},${b} Z`;
+    };
+
+    data.forEach((g, i) => {
+      const top = y(g.ms);
+      svg.append(el('path', g.in_progress
+        ? { d: barPath(bx(i) + 0.75, top + 0.75, bw - 1.5), fill: 'none', stroke: CLEAN(), 'stroke-width': 1.5 }
+        : { d: barPath(bx(i), top, bw), fill: CLEAN() }));
+    });
+
+    if (typical_ms != null) {
+      // Solid hairline in ink, never dashed. Its label is in the key below the
+      // plot rather than at the line's end: bars run the full width, so any
+      // spot on the line can have a bar under it, and a direct label printed
+      // over one is worse than a key one glance away.
+      svg.append(el('line', {
+        x1: P.l, y1: y(typical_ms), x2: W - P.r, y2: y(typical_ms),
+        stroke: INK(), 'stroke-width': 1, opacity: 0.8,
+      }));
+    }
+
+    const firstEnd = data[0].to_ts ?? data[0].from_ts;
+    const lastG = data[n - 1];
+    for (const [x, anchor, text] of [
+      [P.l, 'start', fmtTsDay(firstEnd)],
+      [W - P.r, 'end', lastG.in_progress ? 'now' : fmtTsDay(lastG.to_ts)],
+    ]) {
+      const t = el('text', { x, y: H - 6, fill: INK(), 'font-size': 8, 'text-anchor': anchor });
+      t.textContent = text;
+      svg.append(t);
+    }
+
+    // Outline on the bar being read. Appended last so it sits over everything.
+    const focus = el('path', { fill: 'none', stroke: css('--text'), 'stroke-width': 1.5, opacity: 0 });
+    svg.append(focus);
+
+    const p = plot(host);
+    p.wrap.append(svg);
+
+    scrub(svg, clientX => {
+      const box = svg.getBoundingClientRect();
+      if (!box.width) return;
+      const i = Calc.bandIndex({
+        clientX, boxLeft: box.left, boxWidth: box.width,
+        viewWidth: W, padLeft: P.l, innerWidth: iw, count: n,
+      });
+      const g = data[i];
+      focus.setAttribute('d', barPath(bx(i) - 1, y(g.ms) - 1, bw + 2));
+      focus.setAttribute('opacity', 1);
+
+      const value = `${swatch(CLEAN())}${Calc.preciseSpan(g.ms)}`;
+      const when = g.in_progress
+        ? `<span class="ro-dim">so far · since ${fmtWhen(g.from_ts)}</span>`
+        : `<span class="ro-dim">${fmtWhen(g.from_ts)} → ${fmtWhen(g.to_ts)}</span>`;
+      p.show(`${value}<br>${when}`, ((bx(i) + bw / 2) / W) * box.width);
+    });
+
+    // A key for the two non-obvious marks, not a legend box — one series needs
+    // none. Same figure the stats row calls typical, said in the same words.
+    const key = document.createElement('div');
+    key.className = 'chart-legend';
+    if (typical_ms != null) {
+      key.innerHTML += `<span><i class="key-rule"></i>typical ${Calc.attemptLabel(typical_ms)}</span>`;
+    }
+    if (data.some(g => g.in_progress)) {
+      key.innerHTML += `<span><i class="key-hollow" style="border-color:${CLEAN()}"></i>current, still running</span>`;
+    }
+    if (key.innerHTML) host.append(key);
+  }
+
+  return { rolling, ribbon, gaps };
 })();
