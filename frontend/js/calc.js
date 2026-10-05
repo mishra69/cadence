@@ -142,17 +142,18 @@ var Calc = (function () {
     return {
       what: d.count > 1 ? d.count + ' slips'
         : d.state === 'relapse' ? 'slip'
-        : d.state === 'clean' ? 'reviewed, no slip'
-        // Grey like an empty day, because it says no more about how the day
-        // went — but "nothing logged" would be false.
-        : d.logged ? 'logged, not reviewed'
+        : d.state === 'clean' ? 'no slip'
+        // Today, touched but not over. Grey because it says nothing yet about
+        // how the day ends — but "nothing logged" would be false.
+        : d.in_progress ? 'today so far, no slip'
         : 'nothing logged',
       // A slip is the thing being looked for, so it carries the weight; the grey
       // is de-emphasised for the same reason it is grey in the grid.
       emphasis: d.count > 1 || d.state === 'relapse' ? 'strong'
         : d.state === 'clean' ? 'plain' : 'dim',
-      // Only worth saying on a slip day: on a blue day it is what blue means.
-      confirmed: d.state === 'relapse' && !!d.confirmed,
+      // Whether the evening review was done. Blue no longer implies it — blue
+      // is any engagement — so it is worth saying on any day it is true.
+      confirmed: !!d.confirmed,
     };
   }
 

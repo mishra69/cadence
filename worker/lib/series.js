@@ -25,23 +25,6 @@ function dayRange(from, to) {
 const parseDay = s => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d); };
 
 /**
- * Whether an event is evidence for the coverage figure — the share of a week
- * the app can vouch for when it reports a count.
- *
- *
- * A morning check-in does not. It is answered on waking and reports on the
- * night before; it is evidence the user was here at 09:00, not that nothing
- * happened after. Counting it made a day turn blue — "logged, no slip" — on
- * the strength of one tap at breakfast, before the day had happened. Today's
- * cell did exactly that.
- *
- * The ribbon is stricter still: there a day is blue only once reviewed (see
- * dayRibbon). Coverage asks a weaker question — was the user present during
- * the day — so an urge or a note counts here. A relapse always counts.
- */
-export const isDayEvidence = e => e.kind !== 'morning_check';
-
-/**
  * Relapses in a trailing window, per day, expressed **per week** in both cases.
  *
  * The two windows share a unit on purpose. A 7-day count and a 28-day count are
@@ -84,7 +67,7 @@ export function rollingRelapses({ events, tz, settings, now = Date.now(), days =
   const anyByDay = new Set();
   for (const e of events) {
     const d = e.logical_day || derive(e.ts_utc, tz, boundary).logical_day;
-    if (isDayEvidence(e)) anyByDay.add(d);
+    anyByDay.add(d);
     if (e.kind === 'relapse') relapsesByDay.set(d, (relapsesByDay.get(d) || 0) + 1);
   }
 
@@ -138,8 +121,10 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
   const start = new Date(parseDay(last) - (days - 1) * DAY_MS).toISOString().slice(0, 10);
 
   const byDay = new Map();
+  let firstDay = null;
   for (const e of events) {
     const d = e.logical_day || derive(e.ts_utc, tz, boundary).logical_day;
+    if (firstDay == null || d < firstDay) firstDay = d;
     if (!byDay.has(d)) byDay.set(d, { count: 0, confirmed: false, events: 0 });
     const rec = byDay.get(d);
     rec.events++;
@@ -164,24 +149,33 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
     // behind them as any other — the route loads the whole history, not the
     // window — so they are drawn as data.
     const outside = day < start || day > last;
-    // A cell is absent only if the day has not happened yet. Treating the
-    // alignment padding as absent is what left the first column empty above the
-    // bottom row, so the block read as a staircase rather than a rectangle.
+    // Absent: the day has not happened yet, or it came before the record
+    // began. Before the first entry is not a day the app was forgotten — it is
+    // a day the app did not exist — so it must not take forgotten-day grey.
+    // (The week-alignment days *inside* the record are real days and are drawn
+    // as data; treating them as absent is what once left the grid ragged.)
     const future = day > todayDay;
+    const beforeRecord = firstDay != null && day < firstDay;
+    const isToday = day === todayDay;
     return {
       day,
       outside,
       future,
-      // Blue is a claim — "no slip that day" — and the only thing that makes
-      // it is the evening review. A morning check-in at 09:00, or an urge at
-      // 15:00, shows you were there; neither says how the day ended. Those days
-      // stay grey and carry `logged` instead, which the client draws as the
-      // outline: something was recorded, the day was not reviewed.
-      state: future ? 'pad' : !rec ? 'unknown'
+      before_record: beforeRecord,
+      // One question per colour: did you engage with the app that day?
+      //   grey   — no. You forgot it.
+      //   blue   — yes, and no slip.
+      //   orange — a slip (which also means yes).
+      // Today is the exception, because it is not over: a morning check-in at
+      // 09:00 says nothing about 23:00. It stays grey until 04:00 closes it,
+      // even after the evening review, and is outlined once anything has been
+      // recorded. A slip is orange at once — that needs no waiting.
+      state: future || beforeRecord ? 'pad'
+        : !rec ? 'unknown'
         : rec.count > 0 ? 'relapse'
-        : rec.confirmed ? 'clean'
-        : 'unknown',
-      logged: !future && !!rec && rec.count === 0 && !rec.confirmed,
+        : isToday ? 'unknown'
+        : 'clean',
+      in_progress: isToday && !!rec && rec.count === 0,
       count: rec?.count || 0,
       confirmed: !!rec?.confirmed,
       events: rec?.events || 0,

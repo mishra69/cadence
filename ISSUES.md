@@ -39,6 +39,10 @@ the **oldest** are dropped without any error or log line.
 - The history gates in `rollingRelapses` (`hist >= 7`, `hist >= 28`) measure
   from that wrong start. Near the start of the record, points that could be
   drawn are left out.
+- The ribbon draws days before the first entry as absent (since 2026-10-05).
+  Past the cap, the first *loaded* entry is no longer the first entry, so
+  real days at the start of the record would vanish from the ribbon as if
+  they predated the app.
 - `relapseGaps` loses its earliest attempts, so the chart's typical line
   stops matching "typical" in the stats row. The stats row isn't affected: it
   reads relapses with no `LIMIT` (`worker/lib/stats.js:84`). A test checks the

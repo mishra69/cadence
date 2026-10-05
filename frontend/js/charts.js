@@ -341,9 +341,10 @@ const Charts = (() => {
         // with the CSS.
         cell._day = d;
       }
-      // The outline marks a day with something recorded but no review. It only
-      // ever lands on grey, so wherever it appears it carries information.
-      if (d.logged) cell.classList.add('ribbon-logged');
+      // The outline marks today once anything has been recorded on it: the one
+      // grey cell that is grey because the day is not over, not because the
+      // app was forgotten.
+      if (d.in_progress) cell.classList.add('ribbon-today');
       grid.append(cell);
     }
     p.wrap.append(grid);
@@ -371,8 +372,8 @@ const Charts = (() => {
     legend.innerHTML =
       `<span><i style="background:${SLIP()}"></i>slip</span>` +
       `<span><i class="swatch-multi"></i>more than one</span>` +
-      `<span><i style="background:${CLEAN()}"></i>reviewed, no slip</span>` +
-      `<span><i class="swatch-logged" style="background:${UNKNOWN()}"></i>logged, not reviewed</span>` +
+      `<span><i style="background:${CLEAN()}"></i>no slip</span>` +
+      `<span><i class="swatch-today" style="background:${UNKNOWN()}"></i>today so far</span>` +
       `<span><i style="background:${UNKNOWN()}"></i>nothing logged</span>`;
     host.append(legend);
 

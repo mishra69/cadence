@@ -100,65 +100,91 @@ test('the smoothed series appears later than the 7-day one', () => {
 });
 
 // The other half of the same hazard: a week you did not log produces a genuine
-test('blue means reviewed: nothing short of the evening review declares no slip', () => {
-  // A morning check-in at 09:00 used to turn the day blue before it had
-  // happened. So would an urge at 15:00. Each shows presence, not how the day
-  // ended — only the review says that.
-  const cell = events => dayRibbon({ events, tz: IST, settings: S, now: NOW, days: 14 })
-    .find(c => c.day === '2026-09-03');
+test('a past day is blue for any engagement at all, and grey only when forgotten', () => {
+  // One question per colour: did you use the app that day? A morning check-in
+  // alone is engagement — the day is over, nothing was slipped, it is blue.
+  const cell = (events, day = '2026-09-01') =>
+    dayRibbon({ events: [ev(20, 'daily'), ...events], tz: IST, settings: S, now: NOW, days: 14 })
+      .find(c => c.day === day);
 
-  for (const kind of ['morning_check', 'urge', 'note']) {
-    const c = cell([ev(0, kind, kind === 'morning_check' ? 9 : 15)]);
-    assert.equal(c.state, 'unknown', `${kind}: grey, not blue`);
-    assert.equal(c.logged, true, `${kind}: but outlined — something was recorded`);
+  for (const kind of ['morning_check', 'urge', 'note', 'daily']) {
+    assert.equal(cell([ev(2, kind, 10)]).state, 'clean', kind);
   }
-
-  const reviewed = cell([ev(0, 'morning_check', 9), ev(0, 'daily', 21)]);
-  assert.equal(reviewed.state, 'clean');
-  assert.equal(reviewed.logged, false, 'blue already says more than the outline would');
-
-  const slip = cell([ev(0, 'morning_check', 9), ev(0, 'relapse', 15)]);
-  assert.equal(slip.state, 'relapse', 'a slip is a slip, reviewed or not');
-  assert.equal(slip.logged, false);
-
-  const empty = cell([ev(5, 'daily')]);
-  assert.equal(empty.state, 'unknown');
-  assert.equal(empty.logged, false, 'nothing recorded, no outline');
+  assert.equal(cell([]).state, 'unknown', 'nothing that day: forgotten');
+  assert.equal(cell([ev(2, 'morning_check', 9), ev(2, 'relapse', 22)]).state, 'relapse');
 });
 
-test('the outline only ever lands on grey', () => {
-  // If it could appear on a coloured cell it would be redundant there — every
-  // coloured day has something recorded — and stop carrying information.
+test('today is never blue — not after a check-in, not even after the review', () => {
+  // It is not over. A morning check-in at 09:00 says nothing about 23:00, and
+  // the review is just another interaction until 04:00 closes the day.
+  const today = events =>
+    dayRibbon({ events: [ev(20, 'daily'), ...events], tz: IST, settings: S, now: NOW, days: 14 })
+      .find(c => c.day === '2026-09-03');
+
+  const morning = today([ev(0, 'morning_check', 9)]);
+  assert.equal(morning.state, 'unknown');
+  assert.equal(morning.in_progress, true, 'outlined: touched, not finished');
+
+  const reviewed = today([ev(0, 'morning_check', 9), ev(0, 'daily', 11)]);
+  assert.equal(reviewed.state, 'unknown', 'the review does not close the day');
+  assert.equal(reviewed.in_progress, true);
+
+  const untouched = today([]);
+  assert.equal(untouched.state, 'unknown');
+  assert.equal(untouched.in_progress, false, 'no outline until something is recorded');
+
+  const slip = today([ev(0, 'morning_check', 9), ev(0, 'relapse', 11)]);
+  assert.equal(slip.state, 'relapse', 'a slip needs no waiting');
+  assert.equal(slip.in_progress, false);
+});
+
+test('once 04:00 passes, yesterday turns blue with no further action', () => {
+  // Same events, clock moved past the boundary: the day that was in progress
+  // is now closed, and it was used without a slip.
+  const events = [ev(20, 'daily'), ev(0, 'morning_check', 9)];
+  const before = dayRibbon({ events, tz: IST, settings: S, now: NOW, days: 14 })
+    .find(c => c.day === '2026-09-03');
+  const after = dayRibbon({ events, tz: IST, settings: S, now: NOW + DAY_MS, days: 14 })
+    .find(c => c.day === '2026-09-03');
+  assert.equal(before.state, 'unknown');
+  assert.equal(after.state, 'clean');
+  assert.equal(after.in_progress, false);
+});
+
+test('the outline lands on at most one cell, today', () => {
   const events = [];
   for (let d = 0; d < 20; d++) {
-    if (d % 4 === 0) events.push(ev(d, 'relapse'));
-    if (d % 3 === 0) events.push(ev(d, 'daily'));
+    if (d % 4 === 1) events.push(ev(d, 'relapse'));   // never today
     if (d % 2 === 0) events.push(ev(d, 'urge'));
     events.push(ev(d, 'morning_check', 9));
   }
+  events.push(ev(0, 'note', 11));
   const r = dayRibbon({ events, tz: IST, settings: S, now: NOW, days: 21 });
-  assert.ok(r.some(c => c.logged), 'the case is exercised');
-  assert.ok(r.filter(c => c.logged).every(c => c.state === 'unknown'));
+  const outlined = r.filter(c => c.in_progress);
+  assert.equal(outlined.length, 1);
+  assert.equal(outlined[0].day, '2026-09-03');
 });
 
-test('coverage does not count a morning check-in as the day being logged', () => {
-  // Same question as the ribbon, asked of the 7-day count: how far can the app
-  // vouch for a zero? A week of breakfast taps says nothing about the week, so
-  // the line should fade exactly as it would for a week not logged at all.
+test('days before the first entry are absent, not forgotten', () => {
+  // Grey means "you forgot the app that day". Before the first entry there was
+  // no app to forget, so those days must not wear that grey.
+  const r = dayRibbon({ events: [ev(10, 'urge')], tz: IST, settings: S, now: NOW, days: 30 });
+  const first = '2026-08-24';
+  assert.ok(r.filter(c => c.day < first).every(c => c.state === 'pad' && c.before_record));
+  assert.equal(r.find(c => c.day === first).state, 'clean');
+  assert.ok(r.filter(c => c.day > first && c.day < '2026-09-03').every(c => c.state === 'unknown'),
+    'inside the record, an empty day is a forgotten day');
+});
+
+test('coverage counts a morning check-in as the day being used', () => {
+  // Same rule as the ribbon, so the faded line and the grey cells agree.
   const mornings = rollingRelapses({
     events: [ev(30, 'daily'), ...[0, 1, 2, 3, 4, 5, 6].map(d => ev(d, 'morning_check', 9))],
     tz: IST, settings: S, now: NOW, days: 30,
   });
-  assert.equal(mornings[mornings.length - 1].coverage_7d, 0);
-
-  const reviewed = rollingRelapses({
-    events: [ev(30, 'daily'), ...[0, 1, 2, 3, 4, 5, 6].map(d => ev(d, 'daily'))],
-    tz: IST, settings: S, now: NOW, days: 30,
-  });
-  assert.equal(reviewed[reviewed.length - 1].coverage_7d, 1);
+  assert.equal(mornings[mornings.length - 1].coverage_7d, 1);
 });
 
-// zero, indistinguishable from a good week unless coverage travels with it.
 test('coverage reports how much of the window was actually logged', () => {
   const events = [
     ev(30, 'daily'),
@@ -245,19 +271,19 @@ test('two slips in a day are not drawn the same as one', () => {
 test('a day with no events is unknown, never clean', () => {
   // The most flattering possible lie: presenting a gap in the record as a run
   // of good days.
-  const r = dayRibbon({ events: [ev(0, 'daily')], tz: IST, settings: S, now: NOW, days: 14 });
-  const inRange = r.filter(d => !d.outside);
-  assert.equal(inRange[inRange.length - 1].state, 'clean');
-  assert.ok(inRange.slice(0, -1).every(d => d.state === 'unknown'));
+  const r = dayRibbon({ events: [ev(10, 'daily'), ev(1, 'daily')], tz: IST, settings: S, now: NOW, days: 14 });
+  const day = d => r.find(c => c.day === d);
+  assert.equal(day('2026-09-02').state, 'clean');
+  assert.equal(day('2026-08-28').state, 'unknown', 'between the two entries: forgotten');
 });
 
-test('confirmation is tracked separately from what happened', () => {
-  const r = dayRibbon({ events: [ev(0, 'urge')], tz: IST, settings: S, now: NOW, days: 14 });
-  const today = r.filter(d => !d.outside).pop();
-  assert.notEqual(today.state, 'relapse', 'an urge is not a slip');
-  assert.equal(today.state, 'unknown', 'nor, unreviewed, a declared clean day');
-  assert.equal(today.confirmed, false);
-  assert.equal(today.logged, true);
+test('the review is tracked separately from the colour', () => {
+  // Blue no longer implies it, so the tooltip reports it on its own.
+  const r = dayRibbon({ events: [ev(10, 'urge'), ev(2, 'urge'), ev(1, 'daily')], tz: IST, settings: S, now: NOW, days: 14 });
+  const day = d => r.find(c => c.day === d);
+  assert.equal(day('2026-09-01').state, 'clean');
+  assert.equal(day('2026-09-01').confirmed, false);
+  assert.equal(day('2026-09-02').confirmed, true);
 });
 
 test('an event just after the 04:00 boundary lands on the right day', () => {
