@@ -85,7 +85,9 @@ export function rollingRelapses({ events, tz, settings, now = Date.now(), days =
   const historyDays = day =>
     trackingFrom == null ? 0 : Math.round((parseDay(day) - parseDay(trackingFrom)) / DAY_MS) + 1;
 
-  return all.map((day, i) => {
+  const todayDay = derive(now, tz, boundary).logical_day;
+
+  const points = all.map((day, i) => {
     const hist = historyDays(day);
     return {
       day,
@@ -102,6 +104,14 @@ export function rollingRelapses({ events, tz, settings, now = Date.now(), days =
       relapses: relapsesByDay.get(day) || 0,
     };
   });
+
+  // Today is plotted only once it is settled, which, before 04:00 closes it,
+  // means only once it has a slip. Until then it is the grey cell in the
+  // ribbon below, and a point here would be a rate computed from a day that
+  // is still happening — one that can only rise, drawn as if it were final.
+  // Dropped rather than nulled: a null draws as a gap, which on this chart
+  // means "no data", and the axis would still run to a day with no point on it.
+  return points.filter(p => !(p.day === todayDay && p.relapses === 0));
 }
 
 /**

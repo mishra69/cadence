@@ -86,9 +86,10 @@ test('the 7-day series begins exactly a week after tracking starts', () => {
   const events = [ev(20, 'daily'), ev(3, 'relapse')];
   const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: 40 });
   const drawn = s.filter(p => p.per_week_7d != null);
-  // Day -20 through today is 21 days of history; the first 6 are withheld.
-  assert.equal(drawn.length, 15);
-  assert.ok(s.slice(0, s.length - 15).every(p => p.per_week_7d === null));
+  // Day -20 through yesterday is 20 days of history; the first 6 are withheld.
+  // (Today is unsettled — no slip on it — so it has no point at all.)
+  assert.equal(drawn.length, 14);
+  assert.ok(s.slice(0, s.length - 14).every(p => p.per_week_7d === null));
 });
 
 test('the smoothed series appears later than the 7-day one', () => {
@@ -179,7 +180,8 @@ test('days before the first entry are absent, not forgotten', () => {
 test('coverage counts a morning check-in as the day being used', () => {
   // Same rule as the ribbon, so the faded line and the grey cells agree.
   const mornings = rollingRelapses({
-    events: [ev(30, 'daily'), ...[0, 1, 2, 3, 4, 5, 6].map(d => ev(d, 'morning_check', 9))],
+    // The seven days ending yesterday: today has no point while it is unsettled.
+    events: [ev(30, 'daily'), ...[1, 2, 3, 4, 5, 6, 7].map(d => ev(d, 'morning_check', 9))],
     tz: IST, settings: S, now: NOW, days: 30,
   });
   assert.equal(mornings[mornings.length - 1].coverage_7d, 1);
@@ -188,13 +190,13 @@ test('coverage counts a morning check-in as the day being used', () => {
 test('coverage reports how much of the window was actually logged', () => {
   const events = [
     ev(30, 'daily'),
-    ...[0, 1, 2, 3, 4, 5, 6].map(d => ev(d, 'daily')),   // every day of the last week
+    ...[1, 2, 3, 4, 5, 6, 7].map(d => ev(d, 'daily')),   // every day of the last settled week
   ];
   const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: 30 });
   assert.equal(s[s.length - 1].coverage_7d, 1, 'a fully logged week');
 
   const sparse = rollingRelapses({
-    events: [ev(30, 'daily'), ev(0, 'daily')],
+    events: [ev(30, 'daily'), ev(1, 'daily')],
     tz: IST, settings: S, now: NOW, days: 30,
   });
   const lastSparse = sparse[sparse.length - 1];
@@ -205,7 +207,7 @@ test('coverage reports how much of the window was actually logged', () => {
 
 test('an empty history draws nothing at all', () => {
   const s = rollingRelapses({ events: [], tz: IST, settings: S, now: NOW, days: 14 });
-  assert.equal(s.length, 14);
+  assert.equal(s.length, 13, 'today, with no slip, has no point');
   assert.ok(s.every(p => p.per_week_7d === null && p.per_week_28d === null));
 });
 
@@ -360,4 +362,35 @@ test('no relapses, or one, has no completed gap and no typical', () => {
   const one = relapseGaps({ events: [rAt(NOW - 5 * H)], tz: IST, settings: S, now: NOW });
   assert.equal(one.typical_ms, null);
   assert.equal(one.gaps.filter(g => !g.in_progress).length, 0);
+});
+
+// ── Today on the rate chart ─────────────────────────────────────────────────
+
+test('today has no point on the rate chart while it is still grey', () => {
+  // Matches the ribbon: a day still happening is not plotted as if final.
+  const events = [ev(40, 'daily'), ev(5, 'relapse'), ev(0, 'morning_check', 9)];
+  const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: 30 });
+  assert.equal(s.at(-1).day, '2026-09-02', 'the line ends on the last settled day');
+  assert.ok(!s.some(p => p.day === '2026-09-03'));
+  assert.equal(s.length, 29, 'dropped, not nulled into a gap');
+});
+
+test('today joins the chart the moment it has a slip', () => {
+  const events = [ev(40, 'daily'), ev(5, 'relapse'), ev(0, 'relapse', 11)];
+  const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: 30 });
+  assert.equal(s.at(-1).day, '2026-09-03');
+  assert.equal(s.at(-1).relapses, 1);
+});
+
+test('once 04:00 passes, the day it was joins the chart on its own', () => {
+  const events = [ev(40, 'daily'), ev(5, 'relapse'), ev(0, 'morning_check', 9)];
+  const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW + DAY_MS, days: 30 });
+  assert.ok(s.some(p => p.day === '2026-09-03'), 'yesterday now, and settled');
+  assert.ok(!s.some(p => p.day === '2026-09-04'), 'the new today waits its turn');
+});
+
+test('paging back is unaffected: every day in a past window is plotted', () => {
+  const events = [ev(90, 'daily'), ev(45, 'relapse')];
+  const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: 30, endDay: '2026-08-04' });
+  assert.equal(s.length, 30);
 });
