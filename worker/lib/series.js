@@ -251,3 +251,56 @@ export function relapseGaps({ events, tz, settings, now = Date.now(), days = 63,
 
   return { gaps, typical_ms };
 }
+
+/**
+ * Morning readings, grouped by how long it had been since the last relapse.
+ *
+ * The question the readings were started for is whether they relate to the
+ * streak, so the chart answers that rather than laying the readings out on a
+ * calendar for the eye to compare. All-time rather than the paged window: it
+ * is an aggregate, not a series, and each group is already small.
+ *
+ * Only graded answers count — none, mild, strong. "Don't recall" is an answer
+ * about memory, and the legacy binary "yes" predates the strength question, so
+ * either would invent a figure; both are reported as excluded instead of
+ * silently dropped.
+ *
+ * Also left out: a reading supplied later at the evening review. Its timestamp
+ * is the evening, not the morning, so a relapse that afternoon would wrongly
+ * put a morning reading "under 24h since a relapse" that came after it.
+ *
+ * Each group carries `enough`, false below MIN_PER_GROUP, so a group of two
+ * cannot be drawn with the same confidence as a group of fifteen.
+ */
+export const MORNING_GROUPS = [
+  { id: 'lt24', label: 'under 24h', from_h: 0, to_h: 24 },
+  { id: '24to48', label: '24–48h', from_h: 24, to_h: 48 },
+  { id: 'gte48', label: '48h or more', from_h: 48, to_h: Infinity },
+];
+export const MIN_PER_GROUP = 8;
+const GRADED = { 0: 'none', 2: 'mild', 3: 'strong' };
+
+export function morningBySinceRelapse({ events }) {
+  const rs = events.filter(e => e.kind === 'relapse').map(e => e.ts_utc).sort((a, b) => a - b);
+  const groups = MORNING_GROUPS.map(g => ({ ...g, to_h: Number.isFinite(g.to_h) ? g.to_h : null,
+    none: 0, mild: 0, strong: 0, n: 0, enough: false }));
+  const excluded = { dont_recall: 0, legacy_yes: 0, recalled: 0, no_prior_relapse: 0 };
+
+  for (const e of events) {
+    if (e.morning_wood == null) continue;
+    if (e.morning_wood === 4) { excluded.dont_recall++; continue; }
+    if (e.morning_wood === 1) { excluded.legacy_yes++; continue; }
+    if (e.recalled) { excluded.recalled++; continue; }
+    // The latest relapse strictly before the reading.
+    let lo = 0, hi = rs.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (rs[m] < e.ts_utc) lo = m + 1; else hi = m; }
+    if (lo === 0) { excluded.no_prior_relapse++; continue; }
+    const h = (e.ts_utc - rs[lo - 1]) / 3_600_000;
+    const i = MORNING_GROUPS.findIndex(g => h >= g.from_h && h < g.to_h);
+    const g = groups[i];
+    g[GRADED[e.morning_wood]]++;
+    g.n++;
+  }
+  for (const g of groups) g.enough = g.n >= MIN_PER_GROUP;
+  return { groups, excluded, min_per_group: MIN_PER_GROUP };
+}

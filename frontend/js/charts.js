@@ -540,5 +540,109 @@ const Charts = (() => {
     if (key.innerHTML) host.append(key);
   }
 
-  return { rolling, ribbon, gaps };
+  // ── Morning readings by time since relapse ────────────────────────────────
+
+  const MORNING_STEPS = [
+    // Ink chosen per step for contrast: light text on the dark step, dark text
+    // on the two light ones. Never the data colour itself.
+    { key: 'none', label: 'none', fill: '--viz-mw-none', ink: '--text' },
+    { key: 'mild', label: 'mild', fill: '--viz-mw-mild', ink: '--bg' },
+    { key: 'strong', label: 'strong', fill: '--viz-mw-strong', ink: '--bg' },
+  ];
+
+  /**
+   * One row per group of "hours since the last relapse", each split none /
+   * mild / strong as shares of that row.
+   *
+   * Shares, not counts, because the rows are different sizes and the question
+   * is about proportion: of the mornings within a day of a relapse, how many
+   * were none? The count sits beside every row, and a row below the minimum is
+   * faded and says so, so a group of two cannot pass for a group of fifteen.
+   *
+   * One ordered hue (aqua), lighter for stronger. Blue and orange are taken —
+   * they mean "no slip" and "slip" everywhere else on this screen.
+   */
+  function morning(host, { groups = [], excluded = {}, min_per_group = 8 } = {}) {
+    host.innerHTML = '';
+    if (!groups.some(g => g.n)) {
+      return empty(host, 'Morning answers show here once there are some after a relapse.');
+    }
+
+    const p = plot(host);
+    const rows = document.createElement('div');
+    rows.className = 'mw-rows';
+
+    for (const g of groups) {
+      const row = document.createElement('div');
+      row.className = 'mw-row' + (g.enough ? '' : ' mw-thin');
+
+      const label = document.createElement('span');
+      label.className = 'mw-label';
+      label.textContent = g.label;
+
+      const bar = document.createElement('div');
+      bar.className = 'mw-bar';
+      for (const step of MORNING_STEPS) {
+        const count = g[step.key];
+        if (!count) continue;
+        const seg = document.createElement('span');
+        seg.className = 'mw-seg';
+        seg.style.flexGrow = count;
+        seg.style.background = css(step.fill);
+        seg.style.color = css(step.ink);
+        // The number goes inside only when the share is wide enough to hold
+        // it; otherwise the tap tooltip carries it.
+        // Not on a faded row: at that opacity the number cannot be read, and
+        // the count beside the row already says how few there are.
+        if (g.enough && count / g.n >= 0.14) seg.textContent = count;
+        seg._read = { step: step.label, count, n: g.n, group: g.label, enough: g.enough };
+        bar.append(seg);
+      }
+
+      const n = document.createElement('span');
+      n.className = 'mw-n';
+      n.textContent = g.enough ? `${g.n}` : `${g.n} · too few`;
+
+      row.append(label, bar, n);
+      rows.append(row);
+    }
+    p.wrap.append(rows);
+
+    let focused = null;
+    scrub(rows, (clientX, clientY) => {
+      const hit = document.elementFromPoint(clientX, clientY);
+      const seg = hit?._read ? hit : null;
+      if (!seg || seg === focused) return;
+      focused?.classList.remove('is-focus');
+      seg.classList.add('is-focus');
+      focused = seg;
+      const r = seg._read;
+      const box = seg.getBoundingClientRect(), wrapBox = p.wrap.getBoundingClientRect();
+      p.show(
+        `<b>${r.step}</b> <span class="ro-dim">· ${r.count} of ${r.n} (${Math.round(r.count / r.n * 100)}%)</span>` +
+        `<br><span class="ro-dim">${r.group} since a relapse${r.enough ? '' : ' · too few to trust yet'}</span>`,
+        box.left - wrapBox.left + box.width / 2);
+    });
+
+    const legend = document.createElement('div');
+    legend.className = 'chart-legend';
+    legend.innerHTML = MORNING_STEPS
+      .map(st => `<span><i style="background:${css(st.fill)}"></i>${st.label}</span>`).join('');
+    host.append(legend);
+
+    // What was left out, in plain words — dropping it silently would make the
+    // counts look like every answer ever given.
+    const out = [];
+    if (excluded.dont_recall) out.push(`${excluded.dont_recall} "don't recall"`);
+    if (excluded.legacy_yes) out.push(`${excluded.legacy_yes} from before strength was asked`);
+    if (excluded.recalled) out.push(`${excluded.recalled} given at the evening review`);
+    if (excluded.no_prior_relapse) out.push(`${excluded.no_prior_relapse} before any relapse was logged`);
+    const note = document.createElement('p');
+    note.className = 'chart-note';
+    note.textContent = (out.length ? `Not counted: ${out.join(', ')}. ` : '') +
+      'A morning soon after a relapse is often the morning after an evening one — this shows the pattern, not the cause.';
+    host.append(note);
+  }
+
+  return { rolling, ribbon, gaps, morning };
 })();

@@ -196,6 +196,27 @@
         'One relapse on record: no completed gap, so no chart. The stats row already shows the single number.',
         h => Charts.gaps(h, gapSet([], { running: 30 })));
 
+  const mwGroups = (rows) => ({
+    groups: [['lt24', 'under 24h'], ['24to48', '24–48h'], ['gte48', '48h or more']].map(([id, label], k) => {
+      const [none, mild, strong] = rows[k]; const n = none + mild + strong;
+      return { id, label, none, mild, strong, n, enough: n >= 8 };
+    }),
+    excluded: { dont_recall: 4, legacy_yes: 3, recalled: 1, no_prior_relapse: 0 },
+    min_per_group: 8,
+  });
+
+  bench('Morning — a real-sized sample',
+        'Shares within each row, count beside it. The 48h+ row has two readings and must look like it: faded, "too few yet". Tap a segment for its share.',
+        h => Charts.morning(h, mwGroups([[10, 3, 2], [4, 7, 2], [0, 2, 0]])));
+
+  bench('Morning — one answer dominates a row',
+        'A single-segment row is rounded at both ends, and a sliver too narrow for its number still shows (the number moves to the tooltip).',
+        h => Charts.morning(h, mwGroups([[14, 1, 0], [0, 9, 0], [3, 4, 5]])));
+
+  bench('Morning — nothing yet',
+        'No graded reading after a relapse: an empty state, not three empty rows.',
+        h => Charts.morning(h, { groups: [], excluded: {} }));
+
   bench('Ribbon — full grid',
         'Seven rows, one column per week. Check the top row especially: the tooltip must sit above it, never over it.',
         h => Charts.ribbon(h, ribbonDays(70)));

@@ -192,6 +192,7 @@ const App = (() => {
     }
     Charts.rolling($('chart-rolling'), s.rolling);
     Charts.gaps($('chart-gaps'), s);
+    Charts.morning($('chart-morning'), s.morning);
     Charts.ribbon($('chart-ribbon'), s.ribbon);
 
     // From the ribbon, not the rolling series: the title sits above the ribbon

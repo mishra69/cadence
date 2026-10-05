@@ -16,7 +16,7 @@ import { pusherFor, notification } from './lib/push.js';
 import { runPlanner, planForUser } from './lib/planner.js';
 import { recallBuckets } from './lib/schedule.js';
 import { buildContext } from './lib/context.js';
-import { rollingRelapses, dayRibbon, relapseGaps } from './lib/series.js';
+import { rollingRelapses, dayRibbon, relapseGaps, morningBySinceRelapse } from './lib/series.js';
 
 export { DailyPushDO } from './do/daily-push.js';
 
@@ -366,6 +366,7 @@ async function route(request, env, url) {
       rolling: rollingRelapses({ events, tz, settings, now, days, endDay }),
       ribbon: dayRibbon({ events, tz, settings, now, days, endDay }),
       ...relapseGaps({ events, tz, settings, now, days, endDay }),
+      morning: morningBySinceRelapse({ events }),
     });
   }
 

@@ -52,6 +52,16 @@
      — rotating hue *along* a ramp is what every perceptual scale does; what the
      plan rules out is a second categorical colour, which this is not. */
   --viz-slip-2: #f7c948;
+  /* Morning readings: one ordered hue, lighter for stronger. Aqua because blue
+     and orange already mean "no slip" and "slip" on this screen. Validated as
+     an ordinal ramp against --bg (#202638): monotone lightness, visible step
+     gaps, one hue, darkest step 2.45:1 against the surface. The darkest step
+     was #157a5a until the count printed inside it measured 4.48:1 in light
+     text — just under 4.5 — so it went one notch darker (5.18:1). The two
+     lighter steps carry dark text: 5.45:1 and 10.17:1. */
+  --viz-mw-none: #136f52;
+  --viz-mw-mild: #22b083;
+  --viz-mw-strong: #8ae6c4;
   --viz-slip-3: #fff3c4;
 
   /* The install prompt inherits these through its shadow boundary. */
@@ -598,6 +608,36 @@ button, .btn, [role="button"], input, select, textarea, a {
 .chart-legend i.key-hollow {
   background: transparent; border: 1.5px solid; box-sizing: border-box;
 }
+/* Morning readings chart. Rows of 100%-stacked shares, each capped at 18px
+   thick with 2px gaps between segments, rounded only at the row's ends. */
+/* One grid for all rows (each row is display: contents), so the count column
+   is sized once, to its widest entry, and every bar is exactly the same width.
+   With a grid per row, "2 · too few" made its bar shorter than the others —
+   on a chart of shares, a width difference that means nothing. */
+.mw-rows {
+  display: grid;
+  grid-template-columns: 78px 1fr auto;
+  align-items: center;
+  gap: 10px 8px;
+  touch-action: none;
+}
+.mw-row { display: contents; }
+.mw-label, .mw-n { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.mw-n { min-width: 2ch; text-align: right; }
+.mw-bar { display: flex; gap: 2px; height: 18px; }
+.mw-seg {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 4px; font-size: 11px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mw-seg:first-child { border-radius: 4px 0 0 4px; }
+.mw-seg:last-child { border-radius: 0 4px 4px 0; }
+.mw-seg:only-child { border-radius: 4px; }
+.mw-seg.is-focus { box-shadow: 0 0 0 2px var(--text); position: relative; z-index: 1; }
+/* A group under the minimum: drawn, but plainly not to be leaned on. */
+.mw-thin .mw-bar { opacity: 0.35; }
+.mw-thin .mw-n, .mw-thin .mw-label { color: var(--text-faint); }
+
 .chart-note { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; }
 
 /* The scrub tooltip rides above the plot, so the padding is headroom for it

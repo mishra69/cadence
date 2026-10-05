@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rollingRelapses, dayRibbon, relapseGaps } from '../worker/lib/series.js';
+import { rollingRelapses, dayRibbon, relapseGaps, morningBySinceRelapse, MIN_PER_GROUP } from '../worker/lib/series.js';
 import { fromLocal, DAY_MS } from '../worker/lib/time.js';
 import { DEFAULT_SETTINGS } from '../worker/lib/settings.js';
 
@@ -431,4 +431,58 @@ test('a release is not a slip on the rate chart', () => {
   const events = [ev(40, 'daily'), ...[1, 2, 3].map(d => ev(d, 'release'))];
   const s = rollingRelapses({ events, tz: IST, settings: S, now: NOW, days: 30 });
   assert.equal(s.at(-1).per_week_7d, 0);
+});
+
+// ── Morning readings by time since relapse ──────────────────────────────────
+
+const mw = (ts, v, over = {}) => ({ kind: 'morning_check', ts_utc: ts, morning_wood: v, ...over });
+const group = (out, id) => out.groups.find(g => g.id === id);
+
+test('each reading is grouped by hours since the relapse before it', () => {
+  const r = NOW - 10 * DAY_MS;
+  const out = morningBySinceRelapse({ events: [
+    rAt(r), mw(r + 10 * H, 0), mw(r + 23.9 * H, 2), mw(r + 24 * H, 3), mw(r + 47 * H, 0), mw(r + 60 * H, 2),
+  ] });
+  const lt = group(out, 'lt24');
+  assert.deepEqual([lt.none, lt.mild, lt.strong, lt.n], [1, 1, 0, 2]);
+  assert.equal(group(out, '24to48').n, 2, '24h exactly is the second group, not the first');
+  assert.equal(group(out, '24to48').strong, 1);
+  assert.equal(group(out, 'gte48').mild, 1);
+});
+
+test('only a relapse that came before the reading counts', () => {
+  // A relapse later the same day must not make that morning "under 24h".
+  const r = NOW - 10 * DAY_MS;
+  const out = morningBySinceRelapse({ events: [rAt(r), mw(r + 50 * H, 3), rAt(r + 52 * H)] });
+  assert.equal(group(out, 'gte48').strong, 1);
+  assert.equal(group(out, 'lt24').n, 0);
+});
+
+test('ungraded and late readings are excluded, and counted as excluded', () => {
+  // "Don't recall" is about memory; the legacy "yes" predates strength; a
+  // reading given at the evening review carries an evening timestamp.
+  const r = NOW - 10 * DAY_MS;
+  const out = morningBySinceRelapse({ events: [
+    mw(r - 5 * H, 0),                        // before any relapse
+    rAt(r), mw(r + 5 * H, 4), mw(r + 6 * H, 1), mw(r + 7 * H, 2, { recalled: true }), mw(r + 8 * H, 3),
+  ] });
+  assert.deepEqual({ ...out.excluded }, { dont_recall: 1, legacy_yes: 1, recalled: 1, no_prior_relapse: 1 });
+  assert.equal(out.groups.reduce((a, g) => a + g.n, 0), 1, 'only the one graded live reading');
+});
+
+test('a group too small to trust says so', () => {
+  const r = NOW - 30 * DAY_MS;
+  const events = [rAt(r)];
+  for (let k = 0; k < MIN_PER_GROUP; k++) events.push(mw(r + (1 + k) * H, 0));
+  events.push(mw(r + 30 * H, 2));
+  const out = morningBySinceRelapse({ events });
+  assert.equal(group(out, 'lt24').enough, true, `${MIN_PER_GROUP} readings is enough`);
+  assert.equal(group(out, '24to48').enough, false, 'one is not');
+});
+
+test('a release does not reset the clock for this grouping', () => {
+  // Relapses only, for now: releases started being logged on 2026-10-05.
+  const r = NOW - 10 * DAY_MS;
+  const out = morningBySinceRelapse({ events: [rAt(r), { kind: 'release', ts_utc: r + 40 * H }, mw(r + 50 * H, 0)] });
+  assert.equal(group(out, 'gte48').n, 1);
 });
