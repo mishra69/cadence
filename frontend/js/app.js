@@ -968,11 +968,19 @@ const App = (() => {
    * screen happened to be open, which is why a daily check-in landed on Home
    * rather than on the sweep. A cold open still arrives through captureAction.
    */
+  let lastReceivedId = null;
+
   function receiveAction(url) {
     // However this arrived, it is in hand now — so drop the copy the service
     // worker filed, or the next resume would open the sheet a second time.
     clearInbox();
     const { action, notificationId } = readAction(url);
+    // The message and the inbox can both deliver one tap — the inbox delete is
+    // not awaited, so a watch read can still find the entry. Act on it once.
+    if (notificationId) {
+      if (notificationId === lastReceivedId) return;
+      lastReceivedId = notificationId;
+    }
     if (action) pendingAction = action;
     if (notificationId) pendingNotificationId = notificationId;
     // While locked, the resume path consumes it once the gate is satisfied.
@@ -1008,16 +1016,37 @@ const App = (() => {
     try {
       const cache = await caches.open(INBOX);
       const res = await cache.match(INBOX_KEY);
-      if (!res) return;
+      if (!res) return false;
       // Deleted before it is acted on, not after: a failure part-way through
       // must not leave an entry that reopens the sheet on every resume.
       await cache.delete(INBOX_KEY);
       const { url, at } = await res.json();
-      if (Calc.inboxIsStale(at, Date.now(), INBOX_TTL_MS)) return;
+      if (Calc.inboxIsStale(at, Date.now(), INBOX_TTL_MS)) return true;
       receiveAction(url);
+      return true;
     } catch (err) {
       console.warn('[inbox] could not read the pending action', err);
+      return false;
     }
+  }
+
+  // Looked at more than once, because one look on becoming visible raced the
+  // tap itself: iOS brings the app forward and fires notificationclick at the
+  // same moment, so the page could check before the worker had filed anything,
+  // find it empty, and never look again — leaving whatever screen was last
+  // open. A handful of cheap cache reads over a few seconds outlasts the
+  // worker's write; the first one that finds the tap ends the watch.
+  const INBOX_WATCH_MS = [0, 300, 800, 1600, 3000, 5000];
+  let inboxWatch = [];
+
+  function watchInbox() {
+    for (const t of inboxWatch) clearTimeout(t);
+    inboxWatch = INBOX_WATCH_MS.map(ms => setTimeout(async () => {
+      if (await drainInbox()) {
+        for (const t of inboxWatch) clearTimeout(t);
+        inboxWatch = [];
+      }
+    }, ms));
   }
 
   function consumePendingAction() {
@@ -1873,9 +1902,13 @@ const App = (() => {
       // just this one: the app is usually already running when the tap happens,
       // so becoming visible is the signal, not booting.
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') drainInbox();
+        if (document.visibilityState === 'visible') watchInbox();
       });
-      drainInbox();
+      // Belt and braces for a resume that iOS does not announce as a
+      // visibility change. A second trigger just restarts the same watch.
+      addEventListener('pageshow', watchInbox);
+      addEventListener('focus', watchInbox);
+      watchInbox();
     }
 
     // The veil is only ever lowered by show(). If a future change re-introduces
