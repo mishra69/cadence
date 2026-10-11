@@ -41,11 +41,18 @@ const App = (() => {
   // the lock screen, or a distraction mid-log.
   const TABBED = ['home', 'progress'];
 
+  // Where each tab was left. WebKit drops an element's scroll offset when it
+  // goes display:none, so hiding a screen forgets it unless it is kept here.
+  const tabScroll = {};
+
   function show(name) {
     // Leaving the screen cancels a pending delete rather than carrying it.
     disarmDelete();
     closeAvatarMenu();
-    for (const [k, el] of Object.entries(screens)) el.hidden = k !== name;
+    for (const [k, el] of Object.entries(screens)) {
+      if (!el.hidden && TABBED.includes(k)) tabScroll[k] = el.scrollTop;
+      el.hidden = k !== name;
+    }
     $('app').hidden = false;
 
     $('tabs').hidden = !TABBED.includes(name);
@@ -60,8 +67,9 @@ const App = (() => {
     renderLockWarning();
     // The screen scrolls itself now, not the document — scrollTo(0, 0) here
     // moved a window that no longer scrolls, leaving the new screen wherever
-    // the last one had been left.
-    screens[name]?.scrollTo(0, 0);
+    // the last one had been left. A tab goes back to where it was left; every
+    // other screen is a fresh question and starts at its top.
+    screens[name]?.scrollTo(0, tabScroll[name] ?? 0);
   }
 
   function toast(message, ms = 2400) {
@@ -968,8 +976,10 @@ const App = (() => {
     if (action) pendingAction = action;
     if (notificationId) pendingNotificationId = notificationId;
     // While locked, the resume path consumes it once the gate is satisfied.
-    // Acting now would put the sheet in front of the lock.
-    if (!Lock.locked) consumePendingAction();
+    // Acting now would put the sheet in front of the lock. settleResume rather
+    // than `locked`: this can run before the resume has applied its relock,
+    // and opening the sheet then just hands it to a lock that sends you Home.
+    if (!Lock.settleResume()) consumePendingAction();
   }
 
   // ── The notification inbox ──────────────────────────────────────────────────

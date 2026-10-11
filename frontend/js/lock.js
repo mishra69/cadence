@@ -216,13 +216,30 @@ const Lock = (() => {
     veil(true);
   }
 
-  function onShow() {
-    const away = (Date.now() - hiddenAt) / 1000;
-    if (configured() && !locked && away > idleSeconds()) {
+  /**
+   * Applies the relock a resume is owed, and says whether the app is locked.
+   *
+   * Callable ahead of visibilitychange, because a notification tap can reach
+   * the page first: the service worker's postMessage lands while the app is
+   * still coming forward. Asking only `locked` there read false, the check-in
+   * opened, and a moment later this relocked the app — whose unlock goes to
+   * Home, with the action already spent. Seen on 2026-10-09: the tap recorded
+   * as opened, no morning answer saved.
+   *
+   * hiddenAt is kept while the page is still hidden, so asking early cannot
+   * use up the check the real resume makes.
+   */
+  function settleResume() {
+    if (hiddenAt != null && configured() && !locked
+        && (Date.now() - hiddenAt) / 1000 > idleSeconds()) {
       setLocked(true);
-      return;
     }
-    if (!locked) veil(false);
+    if (!document.hidden) hiddenAt = null;
+    return locked;
+  }
+
+  function onShow() {
+    if (!settleResume()) veil(false);
   }
 
   /**
@@ -246,7 +263,7 @@ const Lock = (() => {
 
   return {
     init, veil,
-    get locked() { return locked; },
+    get locked() { return locked; }, settleResume,
     lockNow, unlocked: () => setLocked(false),
     configured, idleSeconds, setIdleSeconds,
     biometricAvailable, biometricRegistered, registerBiometric, forgetBiometric,
