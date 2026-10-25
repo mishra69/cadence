@@ -166,6 +166,42 @@ test('satisfaction is paired with the gap it ended', () => {
   assert.match(out, /after 13 days: 1\/5/);
 });
 
+test('a short gap is given in hours, not as "after 0 days"', () => {
+  const HOUR = DAY_MS / 24;
+  const out = build({ events: [
+    relapse({ ts_utc: ago(3) }),
+    relapse({ ts_utc: ago(3) + 27 * HOUR, satisfaction: 2 }),
+    relapse({ ts_utc: ago(3) + 36 * HOUR, satisfaction: 4 }),
+  ] });
+  assert.match(out, /after 27 hours: 2\/5/);
+  assert.match(out, /after 9 hours: 4\/5/);
+  assert.ok(!/after \d+ days?: /.test(out));
+});
+
+// ── Too few urges to say anything about ─────────────────────────────────────
+
+test('with only a couple of urges, nothing is said about urges at all', () => {
+  // Production by 2026-10: 2 urges against 38 slips. Percentages of two events,
+  // and a risk contrast against them, would be presented as findings.
+  const out = build({
+    stats: { ...STATS, urges_30d: 2 },
+    events: [urge(), urge({ bucket: 'evening' }), ...EVENTS.filter(e => e.kind === 'relapse')],
+  });
+  assert.ok(!/urge/i.test(out.split('---')[1]), 'no urge line in the data');
+  assert.match(out, /Last 30 days: 3 slips\n/);
+  assert.ok(!/0 urges/.test(out));
+});
+
+test('the urge count appears once there are enough urges to mean something', () => {
+  assert.match(build(), /3 slips, 40 urges logged/);
+  assert.match(build(), /When urges show up/);
+});
+
+test('the tone example is about slips, not urges', () => {
+  const head = build().split('---')[0];
+  assert.ok(!/urge/i.test(head));
+});
+
 test('morning readings appear once there are enough to mean anything', () => {
   const few = [...EVENTS, { kind: 'daily', ts_utc: ago(1), morning_wood: 1, context: [] }];
   assert.ok(!/Morning erections/.test(build({ events: few })));
@@ -291,6 +327,18 @@ test('slips from before the field was required are excluded, not counted as no',
   assert.match(out, /the other 2 predate my recording this/);
   assert.match(out, /2 involved porn/);
   assert.ok(!/Of 4 slips/.test(out), 'unanswered slips must not pad the denominator');
+});
+
+test('a release\'s note never leaves, even with notes opted into', () => {
+  const out = build({
+    includeNotes: true,
+    events: [
+      { kind: 'release', ts_utc: ago(1), context: ['in_person'], note: 'release detail' },
+      relapse({ ts_utc: ago(2), note: 'a slip note' }),
+    ],
+  });
+  assert.match(out, /a slip note/, 'other notes still go when asked for');
+  assert.ok(!/release detail/.test(out));
 });
 
 test('releases get their own line, in neutral words, and never as slips', () => {

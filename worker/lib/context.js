@@ -42,6 +42,18 @@ function plural(n, word) {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
+/**
+ * Fewer urges than this and nothing is said about them at all.
+ *
+ * Urges were meant to be the dense signal (§7) and in practice are barely
+ * logged — 2 against 38 slips over ninety days by 2026-10. Below this, "when
+ * urges show up" was percentages of two events, the risk contrast set 38 slips
+ * against those same two, and "0 urges logged" told the reader there *were* no
+ * urges rather than that none were written down. Same floor as the morning
+ * chart's MIN_PER_GROUP, for the same reason: under it a share is noise.
+ */
+const MIN_URGES = 8;
+
 const BUCKET_LABEL = {
   morning: 'morning', afternoon: 'afternoon', evening: 'evening', late: 'late night',
 };
@@ -97,7 +109,9 @@ function pct(n, total) { return total ? Math.round((n / total) * 100) : 0; }
  */
 export function buildContext({ mode, stats, events, term = null, includeNotes = false, now = Date.now() }) {
   const subject = term || 'a habit I\'m working on';
-  const urges = events.filter(e => e.kind === 'urge');
+  // Below the floor urges are left out entirely, not shown as small numbers.
+  const allUrges = events.filter(e => e.kind === 'urge');
+  const urges = allUrges.length >= MIN_URGES ? allUrges : [];
   const relapses = events.filter(e => e.kind === 'relapse');
   const dist = distribution(urges);
 
@@ -121,8 +135,8 @@ export function buildContext({ mode, stats, events, term = null, includeNotes = 
     '- No cheerleading and no pep talk. "You\'ve got this" is not useful to me.',
     '- Shame makes this worse, not better, so please avoid any framing where I have',
     '  something to feel bad about or a streak I might "throw away".',
-    '- Refer to the data, not to my character. "Four of five late-night urges this',
-    '  week" rather than "you\'re doing well".',
+    '- Refer to the data, not to my character. "Four of the last five slips were',
+    '  late at night" rather than "you\'re doing well".',
     '- Ask me questions before offering advice. You have numbers; you don\'t have',
     '  the context behind them.',
   );
@@ -164,7 +178,8 @@ export function buildContext({ mode, stats, events, term = null, includeNotes = 
     lines.push(`- Typical stretch: ${attemptPhrase(stats.median_attempt_ms, stats.median_attempt_days)}` +
       ` (across ${plural(stats.attempt_count, 'attempt')})`);
   }
-  lines.push(`- Last 30 days: ${stats.relapses_30d} slips, ${stats.urges_30d} urges logged`);
+  lines.push(`- Last 30 days: ${plural(stats.relapses_30d, 'slip')}` +
+    (stats.urges_30d >= MIN_URGES ? `, ${plural(stats.urges_30d, 'urge')} logged` : ''));
   // Said in its own line and in neutral words: a release is not the habit, so
   // it is not a slip and moves none of the figures above — but a chatbot reading
   // a long gap should know it was not all willpower. Nothing finer than the
@@ -228,7 +243,9 @@ export function buildContext({ mode, stats, events, term = null, includeNotes = 
     for (let i = 1; i < sorted.length; i++) {
       if (sorted[i].satisfaction == null) continue;
       pairs.push({
-        gap: Math.round((sorted[i].ts_utc - sorted[i - 1].ts_utc) / DAY_MS),
+        // Same hours-below-two-days rule as the streak, so a 27-hour gap is not
+        // "after 1 days" and a 9-hour one is not "after 0 days".
+        gap: attemptPhrase(sorted[i].ts_utc - sorted[i - 1].ts_utc),
         sat: sorted[i].satisfaction,
       });
     }
@@ -237,7 +254,7 @@ export function buildContext({ mode, stats, events, term = null, includeNotes = 
         '',
         'Afterwards, rated 0–5 for whether it felt worth it, against how long the',
         'stretch before it was:',
-        ...pairs.slice(-6).map(p => `- after ${p.gap} days: ${p.sat}/5`),
+        ...pairs.slice(-6).map(p => `- after ${p.gap}: ${p.sat}/5`),
       );
     }
   }
@@ -264,7 +281,9 @@ export function buildContext({ mode, stats, events, term = null, includeNotes = 
   }
 
   if (includeNotes) {
-    const notes = events.filter(e => e.note).slice(0, 8);
+    // Never a release's note, whatever the setting: a release leaves the app as
+    // the bare word and nothing finer, and a note is the finest detail there is.
+    const notes = events.filter(e => e.note && e.kind !== 'release').slice(0, 8);
     if (notes.length) {
       lines.push('', 'Notes I wrote at the time:',
         ...notes.map(e => `- ${new Date(e.ts_utc).toISOString().slice(0, 10)}: ${e.note}`));
