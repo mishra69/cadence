@@ -210,6 +210,13 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
  * `typical_ms` is the median over *all* completed attempts, not the window's:
  * it is drawn as the reference line, and it has to be the same number the
  * stats row calls "typical" directly above, or the two will disagree on screen.
+ *
+ * Each gap also carries its own `typical_ms`: the median of every completed
+ * attempt up to and including that one — typical as it stood the moment that
+ * gap ended. Drawn as a stepped line it shows the median drifting over time
+ * instead of one flat rule, and its last step is the stats-row figure. The
+ * running attempt carries the current figure: it is excluded from the median
+ * until it ends, so it cannot move it yet.
  */
 export function relapseGaps({ events, tz, settings, now = Date.now(), days = 63, endDay = null }) {
   const boundary = settings.day_boundary_hour;
@@ -232,10 +239,20 @@ export function relapseGaps({ events, tz, settings, now = Date.now(), days = 63,
     all.push({ from_ts: rs[i - 1], to_ts: rs[i], ms: rs[i] - rs[i - 1], releases: within(rs[i - 1], rs[i]) });
   }
 
-  const sorted = all.map(g => g.ms).sort((a, b) => a - b);
-  const m = Math.floor(sorted.length / 2);
-  const typical_ms = !sorted.length ? null
-    : sorted.length % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2;
+  // Running median: insert each attempt in order and read the middle off.
+  const sorted = [];
+  const median = () => {
+    if (!sorted.length) return null;
+    const m = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2;
+  };
+  for (const g of all) {
+    let k = sorted.length;
+    while (k > 0 && sorted[k - 1] > g.ms) k--;
+    sorted.splice(k, 0, g.ms);
+    g.typical_ms = median();
+  }
+  const typical_ms = median();
 
   const gaps = all
     .filter(g => { const d = dayOf(g.to_ts); return d >= start && d <= last; })
@@ -245,7 +262,7 @@ export function relapseGaps({ events, tz, settings, now = Date.now(), days = 63,
     const from = rs[rs.length - 1];
     gaps.push({
       from_ts: from, to_ts: null, ms: Math.max(0, now - from), in_progress: true,
-      releases: within(from, now + 1),
+      releases: within(from, now + 1), typical_ms,
     });
   }
 

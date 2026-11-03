@@ -170,14 +170,16 @@
       const releases = h >= 40 && k % 2 === 0 ? [Math.round(h * 0.45) * H] : [];
       const g = { from_ts: t, to_ts: t + h * H, ms: h * H, in_progress: false, releases }; t += h * H; return g;
     });
-    if (running != null) gaps.push({ from_ts: t, to_ts: null, ms: running * H, in_progress: true });
-    const done = [...hours].sort((a, b) => a - b), m = Math.floor(done.length / 2);
-    const typical = !done.length ? null : (done.length % 2 ? done[m] : (done[m - 1] + done[m]) / 2) * H;
+    const med = a => { const s = [...a].sort((x, y) => x - y), m = Math.floor(s.length / 2);
+      return !s.length ? null : (s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2) * H; };
+    gaps.forEach((g, k) => { g.typical_ms = med(hours.slice(0, k + 1)); });
+    const typical = med(hours);
+    if (running != null) gaps.push({ from_ts: t, to_ts: null, ms: running * H, in_progress: true, typical_ms: typical });
     return { gaps, typical_ms: typical };
   }
 
   bench('Gaps — an ordinary month',
-        'Mostly a day or two, one longer run. Scrub: the pill gives the length and both ends to the hour. The typical line must match the stats-row figure for the same attempts.',
+        'Mostly a day or two, one longer run. Scrub: the pill gives the length and both ends to the hour. The typical line steps with each attempt; its last step must match the stats-row figure.',
         h => Charts.gaps(h, gapSet([26, 31, 9.7, 48, 28, 62.5, 33, 20, 41, 30, 27, 36, 29], { running: 14 })));
 
   bench('Gaps — sub-day cadence',

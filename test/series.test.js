@@ -356,6 +356,18 @@ test('the reference line is the same number the stats row calls typical', async 
   assert.equal(typical_ms, attemptStats(ts, NOW).median_attempt_ms);
 });
 
+test('each gap carries typical as it stood when it ended, ending on the stats figure', () => {
+  // Gaps of 20, 28, 27, 325h: the median after each is 20, 24, 27, 27.5.
+  const t = NOW - 90 * DAY_MS;
+  const ts = [0, 20, 48, 75, 400].map(h => t + h * H);
+  const { gaps, typical_ms } = relapseGaps({ events: ts.map(rAt), tz: IST, settings: S, now: NOW, days: 120 });
+  const done = gaps.filter(g => !g.in_progress);
+  assert.deepEqual(done.map(g => g.typical_ms / H), [20, 24, 27, 27.5]);
+  assert.equal(done[done.length - 1].typical_ms, typical_ms);
+  // The running attempt is not in the median yet, so it carries the current one.
+  assert.equal(gaps.find(g => g.in_progress).typical_ms, typical_ms);
+});
+
 test('no relapses, or one, has no completed gap and no typical', () => {
   assert.deepEqual(relapseGaps({ events: [], tz: IST, settings: S, now: NOW }),
     { gaps: [], typical_ms: null });

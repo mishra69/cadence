@@ -403,8 +403,9 @@ const Charts = (() => {
    * One bar per attempt, oldest on the left, height in hours.
    *
    * The stats row says "typical 31h"; this is the distribution behind that one
-   * number. The reference line is the very same median, so the line and the
-   * word above it can never disagree.
+   * number. The reference line is that median as it stood at the end of each
+   * attempt — a step per bar — so it shows typical drifting, and its last step
+   * is the very figure in the stats row, so the two can never disagree.
    *
    * One series, so one colour and no legend box — the title names it. The
    * attempt still running is drawn hollow rather than in a second colour: it is
@@ -426,7 +427,7 @@ const Charts = (() => {
     const W = 320, H = 132, P = { t: 10, r: 10, b: 20, l: 28 };
     const iw = W - P.l - P.r, ih = H - P.t - P.b;
     const n = data.length;
-    const ticks = Calc.gapTicks(Math.max(...data.map(g => g.ms), typical_ms ?? 0));
+    const ticks = Calc.gapTicks(Math.max(...data.map(g => Math.max(g.ms, g.typical_ms ?? 0)), typical_ms ?? 0));
     const max = ticks[ticks.length - 1];
 
     const svg = el('svg', {
@@ -474,14 +475,25 @@ const Charts = (() => {
       }
     });
 
-    if (typical_ms != null) {
-      // Solid hairline in ink, never dashed. Its label is in the key below the
-      // plot rather than at the line's end: bars run the full width, so any
-      // spot on the line can have a bar under it, and a direct label printed
-      // over one is worse than a key one glance away.
-      svg.append(el('line', {
-        x1: P.l, y1: y(typical_ms), x2: W - P.r, y2: y(typical_ms),
-        stroke: INK(), 'stroke-width': 1, opacity: 0.8,
+    // Typical as it stood after each attempt, one step per bar. Solid hairline
+    // in ink, never dashed. Its label is in the key below the plot rather than
+    // at the line's end: bars run the full width, so any spot on the line can
+    // have a bar under it, and a direct label printed over one is worse than a
+    // key one glance away. Data without per-gap figures falls back to a flat
+    // rule at the all-time value.
+    const stepAt = g => g.typical_ms !== undefined ? g.typical_ms : typical_ms;
+    let d = '';
+    data.forEach((g, i) => {
+      const v = stepAt(g);
+      if (v == null) return;
+      const x0 = i === 0 ? P.l : P.l + band * i;
+      const x1 = i === n - 1 ? W - P.r : P.l + band * (i + 1);
+      d += `${d && stepAt(data[i - 1]) != null ? 'L' : 'M'}${x0},${y(v)} L${x1},${y(v)} `;
+    });
+    if (d) {
+      svg.append(el('path', {
+        d, fill: 'none', stroke: INK(), 'stroke-width': 1, opacity: 0.8,
+        'stroke-linejoin': 'miter',
       }));
     }
 
@@ -521,7 +533,11 @@ const Charts = (() => {
       const rel = g.releases?.length
         ? `${SEP}<span class="ro-dim">includes ${g.releases.length === 1 ? 'a release' : releasesWord(g.releases.length)}</span>`
         : '';
-      p.show(`${value}${rel}<br>${when}`, ((bx(i) + bw / 2) / W) * box.width);
+      const tv = stepAt(g);
+      const typ = tv != null
+        ? `${SEP}<span class="ro-dim">typical ${g.in_progress ? 'now' : 'then'} ${Calc.attemptLabel(tv)}</span>`
+        : '';
+      p.show(`${value}${rel}${typ}<br>${when}`, ((bx(i) + bw / 2) / W) * box.width);
     });
 
     // A key for the two non-obvious marks, not a legend box — one series needs
@@ -529,7 +545,7 @@ const Charts = (() => {
     const key = document.createElement('div');
     key.className = 'chart-legend';
     if (typical_ms != null) {
-      key.innerHTML += `<span><i class="key-rule"></i>typical ${Calc.attemptLabel(typical_ms)}</span>`;
+      key.innerHTML += `<span><i class="key-rule"></i>typical over time · now ${Calc.attemptLabel(typical_ms)}</span>`;
     }
     if (data.some(g => g.in_progress)) {
       key.innerHTML += `<span><i class="key-hollow" style="border-color:${CLEAN()}"></i>current, still running</span>`;
