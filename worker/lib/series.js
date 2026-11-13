@@ -282,6 +282,10 @@ export function relapseGaps({ events, tz, settings, now = Date.now(), days = 63,
  * either would invent a figure; both are reported as excluded instead of
  * silently dropped.
  *
+ * A reading from the morning prompt is stamped at the hour the person says
+ * they woke, not when they answered, so the relapse found here is the last one
+ * before waking. Older readings carry the answer time.
+ *
  * Also left out: a reading supplied later at the evening review. Its timestamp
  * is the evening, not the morning, so a relapse that afternoon would wrongly
  * put a morning reading "under 24h since a relapse" that came after it.
