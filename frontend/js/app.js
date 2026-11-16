@@ -819,6 +819,23 @@ const App = (() => {
   // mis-tap between the two is least likely to be read as a strength.
   const MORNING_OPTIONS = [3, 2, 0, 4];
 
+  /**
+   * The whole hours someone could plausibly have woken at today: 05:00 to
+   * 11:00, never later than now. 05:00 keeps every choice past the 04:00
+   * logical-day boundary, so the reading still lands on this morning; 11:00
+   * keeps an evening answer from offering the afternoon.
+   */
+  function wakeHours() {
+    const now = new Date();
+    const out = [];
+    for (let h = 5; h <= Math.min(now.getHours(), 11); h++) {
+      const at = new Date(now); at.setHours(h, 0, 0, 0);
+      out.push(at.getTime());
+    }
+    return out;
+  }
+  const hourLabel = ts => new Date(ts).toLocaleTimeString([], { hour: 'numeric' });
+
   function renderMorning() {
     const wrap = $('morning-chips');
     wrap.innerHTML = '';
@@ -847,10 +864,32 @@ const App = (() => {
         // Tapping the selection clears it — the field is optional, and 0 is a
         // real answer that must stay distinct from "didn't say".
         sweep.morning_wood = sweep.morning_wood === value ? null : value;
+        sweep.woke_at = null;
+        sweep.woke_set = false;
         renderMorning();
       };
       wrap.append(b);
     }
+
+    // Same follow-up as the morning prompt: the reading is stamped at the wake
+    // hour, so time since the last relapse is measured from the waking and not
+    // from whenever this screen was opened. "Don't recall" is excluded from
+    // the chart, so it is not asked.
+    if (sweep?.morning_wood == null || sweep.morning_wood === 4) return;
+    const label = document.createElement('p');
+    label.className = 'morning-said';
+    label.textContent = 'Roughly when did you wake up?';
+    const row = document.createElement('div');
+    row.className = 'chips';
+    for (const ts of [...wakeHours(), null]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = ts == null ? 'not sure' : hourLabel(ts);
+      b.setAttribute('aria-pressed', String(sweep.woke_at === ts && sweep.woke_set === true));
+      b.onclick = () => { sweep.woke_at = ts; sweep.woke_set = true; renderMorning(); };
+      row.append(b);
+    }
+    wrap.append(label, row);
   }
 
   /**
@@ -875,10 +914,6 @@ const App = (() => {
     const wrap = $('morning-now-chips');
     const q = $('morning-q');
     const skip = $('btn-morning-skip');
-    q.textContent = 'Morning erection today?';
-    skip.hidden = false;
-    wrap.innerHTML = '';
-
     const record = async (value, ts) => {
       for (const x of wrap.querySelectorAll('button')) x.disabled = true;
       await API.log({ kind: 'morning_check', morning_wood: value, ...(ts ? { ts_utc: ts } : {}) });
@@ -891,38 +926,43 @@ const App = (() => {
       }, CONFIG.DONE_MS);
     };
 
-    const askWake = value => {
-      q.textContent = 'Roughly when did you wake up?';
-      skip.hidden = true;
+    // A mis-tapped strength must be fixable before anything is written: the
+    // second step's link goes back to the first rather than skipping, and
+    // nothing is logged until a wake hour is picked.
+    const askStrength = () => {
+      q.textContent = 'Morning erection today?';
+      skip.textContent = 'Skip';
+      skip.onclick = () => show('home');
       wrap.innerHTML = '';
-      // Whole hours from 05:00 up to now, at most the last eight. 05:00 keeps
-      // every choice inside the same logical day as the answer (the boundary
-      // is 04:00), so the reading still lands on this morning.
-      const now = new Date();
-      const hours = [];
-      for (let h = 5; h <= now.getHours(); h++) hours.push(h);
-      for (const h of hours.slice(-8)) {
-        const at = new Date(now); at.setHours(h, 0, 0, 0);
+      for (const value of MORNING_OPTIONS) {
         const b = document.createElement('button');
         b.type = 'button';
-        b.textContent = at.toLocaleTimeString([], { hour: 'numeric' });
-        b.onclick = () => record(value, at.getTime());
+        b.textContent = MORNING_LABELS[value];
+        b.onclick = () => (value === 4 ? record(value, null) : askWake(value));
+        wrap.append(b);
+      }
+    };
+
+    const askWake = value => {
+      q.textContent = `${MORNING_LABELS[value][0].toUpperCase()}${MORNING_LABELS[value].slice(1)}. Roughly when did you wake up?`;
+      skip.textContent = '← Back';
+      skip.onclick = askStrength;
+      wrap.innerHTML = '';
+      for (const ts of wakeHours()) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = hourLabel(ts);
+        b.onclick = () => record(value, ts);
         wrap.append(b);
       }
       const justNow = document.createElement('button');
       justNow.type = 'button';
-      justNow.textContent = hours.length ? 'just now' : 'just now / not sure';
+      justNow.textContent = 'just now';
       justNow.onclick = () => record(value, null);
       wrap.append(justNow);
     };
 
-    for (const value of MORNING_OPTIONS) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = MORNING_LABELS[value];
-      b.onclick = () => (value === 4 ? record(value, null) : askWake(value));
-      wrap.append(b);
-    }
+    askStrength();
   }
 
   /** Re-read today so an added or removed entry shows up in the list itself. */
@@ -948,7 +988,16 @@ const App = (() => {
     // reason a backfilled urge is: answered hours later, from memory, and it
     // should not be pooled with the live ones without saying so.
     if (sweep?.morning_wood != null) {
-      await API.log({ kind: 'morning_check', morning_wood: sweep.morning_wood, recalled: true });
+      // With a wake hour the timestamp is right, and an answer given before
+      // noon is the same morning's memory, not a recall — so it counts like
+      // one from the morning prompt. Later, or with no hour, it stays recalled
+      // and out of the chart.
+      const woke = sweep.woke_set ? sweep.woke_at : null;
+      const recalled = woke == null || new Date().getHours() >= 12;
+      await API.log({
+        kind: 'morning_check', morning_wood: sweep.morning_wood, recalled,
+        ...(woke != null ? { ts_utc: woke } : {}),
+      });
     }
 
     // The check-in is what `confirmed_days` counts; the note rides on it rather
