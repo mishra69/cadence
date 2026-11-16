@@ -338,12 +338,18 @@
   </section>
 
   <!-- ── Morning marker ───────────────────────────────────────────────────
-       One question, asked in the morning because that is the only time the
-       answer is reliable. Terminal: answer and the app is done with you. -->
+       Asked in the morning because that is the only time the answer is
+       reliable: how strong, and roughly when you woke. Terminal: save and the
+       app is done with you. -->
   <section id="screen-morning" class="screen centered" hidden>
     <h2 class="return-title">Morning check</h2>
-    <p class="hint" id="morning-q">Morning erection today?</p>
+    <p class="hint">Morning erection today?</p>
     <div class="chips" id="morning-now-chips"></div>
+    <!-- Shown once a graded answer is picked. Taps only select; nothing is
+         written until Save, so a wrong tap is just tapped again. -->
+    <p class="hint" id="morning-wake-q" hidden>Roughly when did you wake up?</p>
+    <div class="chips" id="morning-wake-chips" hidden></div>
+    <button id="btn-morning-save" class="btn btn-primary btn-hero" disabled>Save</button>
     <button class="link" id="btn-morning-skip">Skip</button>
   </section>
 
