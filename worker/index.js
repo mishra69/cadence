@@ -17,6 +17,9 @@ import { runPlanner } from './lib/planner.js';
 import { buildContext } from './lib/context.js';
 import { rollingRelapses, dayRibbon, relapseGaps, morningBySinceRelapse } from './lib/series.js';
 
+// How long after a reminder is sent an app open still counts as answering it.
+const PENDING_REMINDER_MS = 60 * 60_000;
+
 export { DailyPushDO } from './do/daily-push.js';
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
@@ -270,6 +273,31 @@ async function route(request, env, url) {
     const push = pusherFor(env);
     const result = await push.send(userId, notification('Test notification — the wiring works.'));
     return json(result, result.sent > 0 ? 200 : 502);
+  }
+
+  // The reminder the app should behave as if it was opened from, if any.
+  //
+  // A tap on a notification does not reliably reach the page on iOS — with
+  // Screen Time in front of the app it seems not to arrive at all, and the app
+  // opens on Home with no idea why. This lets the page answer from the server
+  // instead: a morning reminder sent within the hour, never opened, with the
+  // morning still unlogged, means "you are probably here because of it".
+  if (path === '/api/notifications/pending' && method === 'GET') {
+    if (!tz) return json({ pending: null });
+    const settings = await getSettings(db, userId);
+    const now = Date.now();
+    const today = derive(now, tz, settings.day_boundary_hour).logical_day;
+    const row = await db.prepare(
+      `SELECT id FROM notifications
+       WHERE user_id = ? AND kind = 'morning_check' AND sent_at IS NOT NULL
+         AND opened_at IS NULL AND sent_at >= ?
+       ORDER BY sent_at DESC LIMIT 1`
+    ).bind(userId, now - PENDING_REMINDER_MS).first();
+    if (!row) return json({ pending: null });
+    const logged = await db.prepare(
+      `SELECT 1 FROM events WHERE user_id = ? AND logical_day = ? AND morning_wood IS NOT NULL LIMIT 1`
+    ).bind(userId, today).first();
+    return json({ pending: logged ? null : { id: row.id, action: 'morning' } });
   }
 
   // Marks the notification as opened, for phase 5's attribution. Best-effort:
