@@ -13,8 +13,7 @@ import {
 import { getStats } from './lib/stats.js';
 import { derive } from './lib/time.js';
 import { pusherFor, notification } from './lib/push.js';
-import { runPlanner, planForUser } from './lib/planner.js';
-import { recallBuckets } from './lib/schedule.js';
+import { runPlanner } from './lib/planner.js';
 import { buildContext } from './lib/context.js';
 import { rollingRelapses, dayRibbon, relapseGaps, morningBySinceRelapse } from './lib/series.js';
 
@@ -273,33 +272,6 @@ async function route(request, env, url) {
     return json(result, result.sent > 0 ? 200 : 502);
   }
 
-  // The nightly sweep's inputs. Bucket midpoints are derived here rather than
-  // in the client so there is one implementation of "which local instant does
-  // 'afternoon on this logical day' mean", and so the filtering of buckets that
-  // haven't happened yet can't drift from the write path's future-date check.
-  if (path === '/api/sweep' && method === 'GET') {
-    if (!tz) return json({ error: 'no timezone' }, 400);
-    const settings = await getSettings(db, userId);
-    const now = Date.now();
-    const today = derive(now, tz, settings.day_boundary_hour).logical_day;
-
-    const events = await listEvents(db, userId, { day: today });
-    // Answered here rather than in the client so "today's morning reading" has
-    // one definition. The sweep uses it to show what the morning already said
-    // instead of asking again at 21:00 — a night-time recall of a morning fact
-    // is exactly what the morning prompt exists to avoid.
-    const morning = events.find(e => e.morning_wood != null);
-    return json({
-      logical_day: today,
-      events,
-      buckets: recallBuckets(today, tz, now, settings)
-        .map(b => ({ id: b.id, label: b.label, ts_utc: b.ts })),
-      // `daily` only: a morning answer is not a review of the day.
-      confirmed: events.some(e => e.kind === 'daily'),
-      morning_wood: morning ? morning.morning_wood : null,
-    });
-  }
-
   // Marks the notification as opened, for phase 5's attribution. Best-effort:
   // a missing or unknown id is not an error worth surfacing to the client.
   if (path === '/api/notifications/opened' && method === 'POST') {
@@ -310,12 +282,6 @@ async function route(request, env, url) {
       ).bind(Date.now(), id, userId).run();
     }
     return json({ ok: true });
-  }
-
-  // Manual trigger for the planner, so phase 2 can be exercised without waiting
-  // for a cron tick. Plans only — it cannot make a send happen.
-  if (path === '/api/sweep/plan' && method === 'POST') {
-    return json(await planForUser(env, userId));
   }
 
   // Builds the text handed to an outside chatbot. Server-side because the

@@ -29,7 +29,6 @@ test('empty database returns sane values, not nulls that crash the UI', async ()
   assert.equal(s.has_data, false);
   assert.equal(s.streak_days, null);
   assert.equal(s.days_tracked, 0);
-  assert.equal(s.confirmed_days, 0);
   assert.equal(s.attempt_count, 0);
   assert.equal(s.median_attempt_days, null);
   assert.equal(s.best_days, null);
@@ -61,52 +60,6 @@ test('streak is elapsed days since the last relapse', async () => {
   const s = await getStats(db, U, IST, S, NOW);
   assert.equal(s.streak_days, 42);
   assert.equal(s.last_relapse_ts, NOW - 42 * DAY_MS - 3600_000);
-});
-
-test('confirmed days counts distinct daily check-ins inside the streak window', async () => {
-  const db = makeDb();
-  await add(db, 'relapse', NOW - 5 * DAY_MS);
-  for (let d = 4; d >= 1; d--) await add(db, 'daily', NOW - d * DAY_MS);
-  // Two check-ins on the same logical day count once.
-  await add(db, 'daily', NOW - 1 * DAY_MS + 3600_000);
-  // A check-in from before the relapse is outside the window.
-  await add(db, 'daily', NOW - 9 * DAY_MS);
-
-  const s = await getStats(db, U, IST, S, NOW);
-  assert.equal(s.streak_days, 5);
-  assert.equal(s.confirmed_days, 4);
-  // A 5-day streak touches 6 logical days — the relapse day and today are both
-  // partial. Coverage must never read as more confirmed days than days.
-  assert.equal(s.coverage_days, 6);
-  assert.ok(s.confirmed_days <= s.coverage_days);
-});
-
-test('a morning check-in does not confirm the day', async () => {
-  // The bug the two kinds were split to fix: answering one question at 08:00
-  // wrote `daily` and so marked the whole day reviewed before it had happened.
-  // A coverage number that overstates is worse than none — it reads as
-  // trustworthy.
-  const db = makeDb();
-  await add(db, 'relapse', NOW - 5 * DAY_MS);
-  for (let d = 4; d >= 1; d--) await add(db, 'morning_check', NOW - d * DAY_MS, { morning_wood: 3 });
-
-  const s = await getStats(db, U, IST, S, NOW);
-  assert.equal(s.confirmed_days, 0, 'four mornings answered, no day reviewed');
-
-  // Reviewing two of those days is what moves the number.
-  await add(db, 'daily', NOW - 4 * DAY_MS);
-  await add(db, 'daily', NOW - 3 * DAY_MS);
-  assert.equal((await getStats(db, U, IST, S, NOW)).confirmed_days, 2);
-});
-
-test('confirmed days never exceeds the days it is reported against', async () => {
-  const db = makeDb();
-  await add(db, 'relapse', NOW - 5 * DAY_MS);
-  // A check-in on every logical day the window touches, including both partials.
-  for (let d = 5; d >= 0; d--) await add(db, 'daily', NOW - d * DAY_MS);
-  const s = await getStats(db, U, IST, S, NOW);
-  assert.equal(s.confirmed_days, s.coverage_days);
-  assert.ok(s.confirmed_days <= s.coverage_days, `${s.confirmed_days} of ${s.coverage_days}`);
 });
 
 test('relapses_30d is trailing, so old slips fall out', async () => {

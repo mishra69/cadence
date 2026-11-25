@@ -277,10 +277,7 @@ const API = (() => {
   }
 
   /** Today's events plus the recall buckets that have already elapsed. */
-  async function sweep() { return request('/api/sweep'); }
 
-  /** Plan today's check-in now, instead of waiting for a cron tick. */
-  async function planSweep() { return request('/api/sweep/plan', { method: 'POST' }); }
 
   /** Mark a notification opened, for phase 5's attribution. Never throws. */
   async function notificationOpened(id) {
@@ -306,7 +303,7 @@ const API = (() => {
     log, flush, events, remove, stats, settings,
     pendingEvents, pendingCount,
     pushSupport, pushSubscribe, pushUnsubscribe, pushStatus, pushTest,
-    sweep, planSweep, notificationOpened, seen, vouch, context, series,
+    notificationOpened, seen, vouch, context, series,
     HttpError,
   };
 })();

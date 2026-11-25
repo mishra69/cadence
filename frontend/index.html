@@ -105,9 +105,9 @@
     </div>
     <div class="hero-actions">
       <!-- Was "Log an urge": two urges in seven weeks against 31 relapses, so
-           half of Home went to the least-used action in the app. Urges are
-           still loggable from the evening review and still a kind on the
-           server; only this slot moved. Relapse keeps its position so the tap
+           half of Home went to the least-used action in the app. Urge
+           logging was later dropped with the evening review; the kind stays
+           on the server for the rows already recorded. Relapse keeps its position so the tap
            that matters most is where the hand already expects it. -->
       <button id="btn-log-release" class="btn-tap btn-tap-release">
         <span class="btn-tap-label">Log a release</span>
@@ -116,12 +116,11 @@
         <span class="btn-tap-label">Log a relapse</span>
       </button>
     </div>
-    <!-- A quiet link, deliberately not a third hero button. Here rather than
-         buried in a menu only because the daily notification is the intended
-         way in and hasn't been confirmed working on-device yet; once it has,
-         this can go. -->
+    <!-- The morning is logged from here whenever you like; the morning
+         notification is only a reminder if it hasn't been. Replaced "Review
+         today" when the daily confirmation was retired. -->
     <div class="home-secondary">
-      <button id="btn-open-sweep" class="btn-tap btn-tap-secondary">Review today</button>
+      <button id="btn-open-morning" class="btn-tap btn-tap-secondary">Log morning</button>
       <button id="btn-talk-now" class="btn-tap btn-tap-secondary">Talk it through</button>
     </div>
   </section>
@@ -338,11 +337,12 @@
   </section>
 
   <!-- ── Morning marker ───────────────────────────────────────────────────
-       Asked in the morning because that is the only time the answer is
-       reliable: how strong, and roughly when you woke. Terminal: save and the
-       app is done with you. -->
+       Its own action from Home, and the target of the morning reminder: how
+       strong, and roughly when you woke. Terminal: save and the app is done
+       with you. -->
   <section id="screen-morning" class="screen centered" hidden>
-    <h2 class="return-title">Morning check</h2>
+    <h2 class="return-title">Morning</h2>
+    <p class="hint" id="morning-status" hidden></p>
     <p class="hint">Morning erection today?</p>
     <div class="chips" id="morning-now-chips"></div>
     <!-- Shown once a graded answer is picked. Taps only select; nothing is
@@ -350,45 +350,7 @@
     <p class="hint" id="morning-wake-q" hidden>Roughly when did you wake up?</p>
     <div class="chips" id="morning-wake-chips" hidden></div>
     <button id="btn-morning-save" class="btn btn-primary btn-hero" disabled>Save</button>
-    <button class="link" id="btn-morning-skip">Skip</button>
-  </section>
-
-  <!-- ── Nightly sweep ────────────────────────────────────────────────────
-       Three steps, no per-urge follow-ups. This is the only place the app asks
-       for effort, so it stays short or it stops happening. "Did I log
-       everything?" is a much softer prompt than "are you having an urge?",
-       which is exactly why it replaced the probes (Appendix A). -->
-  <section id="screen-sweep" class="screen" hidden>
-    <header class="sheet-head">
-      <button class="link" id="btn-sweep-skip">Not now</button>
-      <h2 class="sheet-title">Today</h2>
-      <span class="spacer"></span>
-    </header>
-
-    <ul id="sweep-list" class="timeline"></ul>
-    <p id="sweep-empty" class="empty" hidden>Nothing logged today.</p>
-
-    <div class="field">
-      <span class="field-label">Anything you didn't get to log?</span>
-      <!-- Coarse buckets, never a time picker: buckets match how recall works,
-           and a picker invites invented precision hours after the fact. -->
-      <div class="chips" id="sweep-buckets"></div>
-      <p class="hint" id="sweep-added"></p>
-    </div>
-
-    <div class="field">
-      <span class="field-label">Morning wood <span class="optional" id="morning-optional">optional</span></span>
-      <div class="chips" id="morning-chips"></div>
-    </div>
-
-    <div class="field">
-      <label class="field-label" for="sweep-note">
-        A line about the day <span class="optional">optional</span>
-      </label>
-      <textarea id="sweep-note" rows="2" maxlength="2000" placeholder=""></textarea>
-    </div>
-
-    <button id="btn-sweep-done" class="btn btn-primary btn-hero">Confirm the day</button>
+    <button class="link" id="btn-morning-skip">Cancel</button>
   </section>
 
   <!-- Shown for about a second after a save, then the app gets out of the way. -->

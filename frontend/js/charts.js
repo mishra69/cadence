@@ -310,8 +310,7 @@ const Charts = (() => {
    */
   const cellTitle = d => {
     const w = Calc.dayWords(d);
-    return `${fmtDay(d.day)} — ${w.what}${d.releases ? `, ${releasesWord(d.releases)}` : ''}` +
-      `${w.confirmed ? ', day confirmed' : ''}`;
+    return `${fmtDay(d.day)} — ${w.what}${d.releases ? `, ${releasesWord(d.releases)}` : ''}`;
   };
 
   const cellTip = d => {
@@ -321,7 +320,6 @@ const Charts = (() => {
       : w.what;
     return `${what}` +
       `${d.releases ? ` <span class="ro-dim">· ${releasesWord(d.releases)}</span>` : ''}` +
-      `${w.confirmed ? ' <span class="ro-dim">· confirmed</span>' : ''}` +
       `<br><span class="ro-dim">${fmtDay(d.day)}</span>`;
   };
 

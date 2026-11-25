@@ -58,18 +58,6 @@ export function attemptStats(relapseTimestamps, now = Date.now()) {
 }
 
 /**
- * Whole days between two 'YYYY-MM-DD' strings. Plain calendar arithmetic — no
- * zone is involved, because a logical day is already zone-resolved.
- */
-export function daysBetweenLogicalDays(from, to) {
-  const parse = s => {
-    const [y, m, d] = s.split('-').map(Number);
-    return Date.UTC(y, m - 1, d);
-  };
-  return Math.round((parse(to) - parse(from)) / DAY_MS);
-}
-
-/**
  * @param {D1Database} db
  * @param {string} userId
  * @param {string} tz  the client's current zone, for logical-day answers
@@ -107,30 +95,6 @@ export async function getStats(db, userId, tz, settings, now = Date.now()) {
   const lastRelapse = relapses.length ? relapses[relapses.length - 1] : null;
   const streak = streakDays(lastRelapse, now);
 
-  // Coverage counts days, because a check-in is inherently per-day — unlike the
-  // streak, where day-counting breaks across the date line (§3).
-  //
-  // Its denominator is the number of logical days the window *spans*, not the
-  // elapsed-day streak. Those differ by one whenever the window has a partial
-  // day at each end, which is almost always: a 6-day streak touches 7 logical
-  // days, and reporting "7 of 6 confirmed" reads as a bug in the app rather
-  // than as the arithmetic it is.
-  const windowStart = lastRelapse ?? firstTs;
-  let confirmedDays = 0;
-  let coverageDays = 0;
-  if (windowStart != null) {
-    const row = await db.prepare(
-      `SELECT COUNT(DISTINCT logical_day) AS n FROM events
-       WHERE user_id = ? AND kind = 'daily' AND ts_utc >= ?`
-    ).bind(userId, windowStart).first();
-    confirmedDays = row?.n ?? 0;
-    if (tz) {
-      const from = derive(windowStart, tz, settings.day_boundary_hour).logical_day;
-      const to = derive(now, tz, settings.day_boundary_hour).logical_day;
-      coverageDays = daysBetweenLogicalDays(from, to) + 1;
-    }
-  }
-
   const urges90 = c.urges_90d || 0;
   const relapses90 = c.relapses_90d || 0;
 
@@ -154,8 +118,6 @@ export async function getStats(db, userId, tz, settings, now = Date.now()) {
     // No relapse on record yet: elapsed time since tracking began is the honest
     // number, but it is explicitly not a streak, so the client labels it.
     days_tracked: firstTs == null ? 0 : Math.floor((now - firstTs) / DAY_MS),
-    confirmed_days: confirmedDays,
-    coverage_days: coverageDays,
     last_relapse_ts: lastRelapse,
 
     ...attemptStats(relapses, now),

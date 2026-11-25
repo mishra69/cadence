@@ -10,7 +10,7 @@
 // minutes of jitter is genuinely available.
 import { derive } from './time.js';
 import { getSettings } from './settings.js';
-import { drawTarget, drawMorningTarget, isMissed } from './schedule.js';
+import { drawMorningTarget, isMissed } from './schedule.js';
 
 /**
  * The zone to plan in: whatever the phone last reported. Push subscriptions
@@ -57,7 +57,11 @@ export async function planForUser(env, userId, { now = Date.now(), rng = Math.ra
   const settings = await getSettings(db, userId);
   const logicalDay = derive(now, tz, settings.day_boundary_hour).logical_day;
 
-  const out = { daily: await planKind(env, userId, 'daily_sweep', { tz, settings, logicalDay, now, rng }) };
+  // The evening "confirm the day" notification is retired: the day is no
+  // longer confirmed, and a nightly ping to do nothing in particular is noise.
+  // The morning reminder is the only one planned; it is sent only if the
+  // morning has not already been logged (checked at fire time, in the DO).
+  const out = {};
   if (settings.morning_checkin_enabled) {
     out.morning = await planKind(env, userId, 'morning_check', { tz, settings, logicalDay, now, rng });
   }
@@ -90,9 +94,7 @@ async function planKind(env, userId, kind, { tz, settings, logicalDay, now, rng 
     return { action: 'already-planned', scheduled_for: existing.scheduled_for, logical_day: logicalDay };
   }
 
-  const target = kind === 'morning_check'
-    ? drawMorningTarget(logicalDay, tz, settings, rng)
-    : drawTarget(logicalDay, tz, settings, rng);
+  const target = drawMorningTarget(logicalDay, tz, settings, rng);
 
   // A day that has already run past its own window — first install in the
   // evening, say — gets nothing rather than an immediate ping. Tomorrow's
@@ -116,8 +118,8 @@ async function planKind(env, userId, kind, { tz, settings, logicalDay, now, rng 
   return { action: 'planned', scheduled_for: target, logical_day: logicalDay };
 }
 
-function bodyFor(kind) {
-  return kind === 'morning_check' ? morningBody() : dailyBody();
+function bodyFor() {
+  return morningBody();
 }
 
 /**
@@ -141,32 +143,11 @@ export async function armAlarm(env, userId, kind, notificationId, at) {
 }
 
 /**
- * The morning prompt. One question, and nothing on a lock screen that says what
- * it is about — "Morning check" is as much as it ever reveals.
+ * The morning reminder. Nothing on a lock screen that says what it is about —
+ * "Morning check" is as much as it ever reveals.
  */
 export function morningBody() {
-  return 'Morning check — one question.';
-}
-
-/**
- * The fallback body. Phase 5 replaces this with a pre-generated pool, but the
- * constraints start here and don't change: readable on a lock screen in public,
- * no reference to the behaviour, and short.
- *
- * It now leads with the streak, which is warmer than a bare question without
- * crossing the §0 tone line. That line is *reference data, not character*:
- * "Day 12" is a fact, "you're doing great" is a verdict — and a verdict is what
- * makes the next notification feel like a judgement when the number is 1. For
- * the same reason there is never loss framing: nothing here says "don't break
- * it now".
- *
- * "Day 12" also stays neutral on a lock screen. It says a streak is being
- * counted; it doesn't say of what.
- */
-export function dailyBody({ streakDays = null } = {}) {
-  if (streakDays == null) return 'Anything to add to today?';
-  if (streakDays === 0) return 'Day 1 starts now. Anything to add?';
-  return `Day ${streakDays}. Anything to add?`;
+  return 'Morning check — not logged yet.';
 }
 
 /** The cron entry point. */

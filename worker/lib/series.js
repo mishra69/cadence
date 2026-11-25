@@ -135,12 +135,11 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
   for (const e of events) {
     const d = e.logical_day || derive(e.ts_utc, tz, boundary).logical_day;
     if (firstDay == null || d < firstDay) firstDay = d;
-    if (!byDay.has(d)) byDay.set(d, { count: 0, confirmed: false, events: 0, releases: 0 });
+    if (!byDay.has(d)) byDay.set(d, { count: 0, events: 0, releases: 0 });
     const rec = byDay.get(d);
     rec.events++;
     if (e.kind === 'relapse') rec.count++;
     if (e.kind === 'release') rec.releases++;
-    if (e.kind === 'daily') rec.confirmed = true;
   }
 
   // Extend backwards to the start of that week and forwards to the end of the
@@ -179,8 +178,7 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
       //   orange — a slip (which also means yes).
       // Today is the exception, because it is not over: a morning check-in at
       // 09:00 says nothing about 23:00. It stays grey until 04:00 closes it,
-      // even after the evening review, and is outlined once anything has been
-      // recorded. A slip is orange at once — that needs no waiting.
+      // and is outlined once anything has been recorded. A slip is orange at once — that needs no waiting.
       state: future || beforeRecord ? 'pad'
         : !rec ? 'unknown'
         : rec.count > 0 ? 'relapse'
@@ -191,7 +189,6 @@ export function dayRibbon({ events, tz, settings, now = Date.now(), days = 63, e
       // A mark on the cell, never a colour: the colour answers "used the app,
       // and did I slip", and a release is neither a slip nor more than use.
       releases: rec?.releases || 0,
-      confirmed: !!rec?.confirmed,
       events: rec?.events || 0,
     };
   });

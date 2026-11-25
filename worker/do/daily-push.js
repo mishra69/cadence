@@ -10,8 +10,8 @@ import { getSettings } from '../lib/settings.js';
 import { sendDecision } from '../lib/schedule.js';
 import { currentTz } from '../lib/planner.js';
 import { pusherFor, notification } from '../lib/push.js';
-import { derive, streakDays } from '../lib/time.js';
-import { dailyBody, morningBody } from '../lib/planner.js';
+import { derive } from '../lib/time.js';
+import { morningBody } from '../lib/planner.js';
 
 export class DailyPushDO {
   constructor(state, env) {
@@ -47,6 +47,25 @@ export class DailyPushDO {
     const settings = await getSettings(db, userId);
     const today = derive(now, tz, settings.day_boundary_hour).logical_day;
 
+    // The evening check-in is retired. One planned before the change can still
+    // be armed; it is recorded as suppressed rather than sent.
+    if (row.kind !== 'morning_check') {
+      await db.prepare('UPDATE notifications SET suppressed_reason = ? WHERE id = ?')
+        .bind('retired', notificationId).run();
+      return;
+    }
+
+    // A reminder, not the way in: logging the morning is its own action on
+    // Home. Already logged today means there is nothing to remind about.
+    const logged = await db.prepare(
+      `SELECT 1 FROM events WHERE user_id = ? AND logical_day = ? AND morning_wood IS NOT NULL LIMIT 1`
+    ).bind(userId, today).first();
+    if (logged) {
+      await db.prepare('UPDATE notifications SET suppressed_reason = ? WHERE id = ?')
+        .bind('already_logged', notificationId).run();
+      return;
+    }
+
     // One query answers both the gap and the cap. The plan is explicit that the
     // cap is enforced here rather than by a sweep that disarms alarms: an armed
     // alarm is a prediction, and the authoritative answer only exists now.
@@ -74,19 +93,8 @@ export class DailyPushDO {
       return;
     }
 
-    // Built now rather than at plan time: the row was written at the 04:00
-    // rollover and "Day 12" has to be true at 21:00, not seventeen hours ago.
-    let body = row.body;
-    let action = 'sweep';
-    if (row.kind === 'morning_check') {
-      body = morningBody();
-      action = 'morning';
-    } else {
-      const lastRelapse = await db.prepare(
-        "SELECT MAX(ts_utc) AS at FROM events WHERE user_id = ? AND kind = 'relapse'"
-      ).bind(userId).first();
-      body = dailyBody({ streakDays: streakDays(lastRelapse?.at ?? null, now) });
-    }
+    const body = morningBody();
+    const action = 'morning';
 
     try {
       const push = pusherFor(this.env);

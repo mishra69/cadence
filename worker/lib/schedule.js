@@ -138,27 +138,3 @@ export function isMissed(row, now, tz, settings) {
   if (row.scheduled_for > now) return false;
   return derive(now, tz, settings.day_boundary_hour).logical_day === row.logical_day;
 }
-
-/**
- * The buckets the nightly sweep offers, with a midpoint instant for each.
- *
- * Coarse buckets, never a time picker: buckets match how recall actually works,
- * and a picker invites invented precision about something remembered hours
- * later. Only buckets whose midpoint has already passed are offered — at a
- * 21:00 sweep, "late night" is still ahead, and backfilling it would be both a
- * lie and a future-dated event the write path rejects.
- */
-export function recallBuckets(logicalDay, tz, now, settings = { day_boundary_hour: 4 }) {
-  const [y, m, d] = logicalDay.split('-').map(Number);
-  const defs = [
-    { id: 'morning', label: 'morning', hour: 8, minute: 0, dayOffset: 0 },
-    { id: 'afternoon', label: 'afternoon', hour: 14, minute: 30, dayOffset: 0 },
-    { id: 'evening', label: 'evening', hour: 19, minute: 30, dayOffset: 0 },
-    // 00:00–04:00 belongs to this logical day but the *next* calendar date.
-    { id: 'late', label: 'late night', hour: 1, minute: 0, dayOffset: 1 },
-  ];
-
-  return defs
-    .map(b => ({ ...b, ts: fromLocal(tz, y, m, d + b.dayOffset, b.hour, b.minute) }))
-    .filter(b => b.ts <= now);
-}

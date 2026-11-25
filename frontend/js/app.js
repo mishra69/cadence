@@ -144,11 +144,6 @@ const App = (() => {
 
     const parts = [];
     if (s.streak_days == null && s.has_data) parts.push('no relapse logged yet');
-    if (s.coverage_days) {
-      // Ignoring the app doesn't reset anything, but it visibly degrades the
-      // data — which is the honest signal, and gentler than a broken streak.
-      parts.push(`${s.confirmed_days} of ${plural(s.coverage_days, 'day')} confirmed`);
-    }
     if (s.stale) parts.push('offline — showing the last figures');
 
     // Dim rather than alarm: the number has not changed, only how far the app
@@ -243,7 +238,7 @@ const App = (() => {
       kind.className = `ev-kind ${ev.kind}`;
       kind.textContent = {
         urge: 'Urge', relapse: 'Relapse', release: 'Release', daily: 'Day confirmed',
-        morning_check: 'Morning check-in', note: 'Note',
+        morning_check: 'Morning', note: 'Note',
       }[ev.kind] || ev.kind;
       if (ev.kind === 'urge' && ev.intensity != null) kind.textContent += ` · ${ev.intensity}/5`;
       if (ev.kind === 'relapse' && ev.satisfaction != null) kind.textContent += ` · worth ${ev.satisfaction}/5`;
@@ -329,7 +324,6 @@ const App = (() => {
       toast('Deleted.');
       await refreshProgress();
       if (!screens.history.hidden) await renderHistory();
-      if (!screens.sweep.hidden) await refreshSweepList();
     } catch {
       toast("Couldn't delete that — try again when you're online.");
     }
@@ -374,32 +368,6 @@ const App = (() => {
       ? 'Nothing logged yet today.'
       : "Today's entries need a connection.";
     $('today-empty').hidden = merged.length > 0;
-    renderConfirmButton(merged, dayLoaded);
-  }
-
-  // A one-tap confirmation that the day is accounted for. Phase 2 replaces the
-  // prompting half of this with the nightly sweep; the action itself stays.
-  function renderConfirmButton(todaysEvents, dayLoaded) {
-    const list = $('today-list');
-    const existing = $('btn-confirm-day');
-    if (existing) existing.remove();
-
-    // Offline the day can't be read back, so the button stays available rather
-    // than disabled — logging is allowed to work offline, and a second `daily`
-    // for the same day is harmless: coverage counts distinct logical days.
-    const done = dayLoaded && todaysEvents.some(e => e.kind === 'daily');
-    const btn = document.createElement('button');
-    btn.id = 'btn-confirm-day';
-    btn.className = 'btn btn-quiet btn-small';
-    btn.style.marginTop = '8px';
-    btn.textContent = done ? 'Day confirmed' : 'Confirm today';
-    btn.disabled = done;
-    btn.onclick = async () => {
-      btn.disabled = true;
-      await API.log({ kind: 'daily' });
-      await refreshProgress();
-    };
-    list.parentElement.append(btn);
   }
 
   // ── The missing-lock warning ──────────────────────────────────────────────
@@ -748,59 +716,7 @@ const App = (() => {
     }
   }
 
-  // ── Nightly sweep ─────────────────────────────────────────────────────────
-
-  let sweep = null;
-
-  async function openSweep() {
-    let data;
-    try {
-      data = await API.sweep();
-    } catch {
-      toast('The sweep needs a connection.');
-      return show('home');
-    }
-
-    // `answered` is the morning's own reading, if it was given. The chips are
-    // only offered when it is missing — asking a second time at 21:00 would be
-    // a night-time recall of a morning fact, which is the error the morning
-    // prompt exists to prevent.
-    sweep = { day: data.logical_day, morning_wood: null, answered: data.morning_wood ?? null };
-    show('sweep');
-    renderMorning();
-
-    // Deletable here too: the sweep is where remembered entries get added, so
-    // it is exactly where a mis-tap needs undoing. Same two-stage confirm.
-    renderTimeline($('sweep-list'), data.events, { showDelete: true });
-    $('sweep-empty').hidden = data.events.length > 0;
-    $('sweep-note').value = '';
-    $('sweep-added').textContent = '';
-    $('btn-sweep-done').textContent = data.confirmed ? 'Done' : 'Confirm the day';
-
-    const wrap = $('sweep-buckets');
-    wrap.innerHTML = '';
-    for (const b of data.buckets) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.textContent = b.label;
-      // Not a toggle: each tap adds one more remembered urge to that bucket,
-      // because "a couple this afternoon" is a thing recall actually produces.
-      btn.onclick = async () => {
-        await API.log({
-          kind: 'urge',
-          ts_utc: b.ts_utc,
-          // Recalled events are systematically milder and fuzzier than live
-          // ones, and phase 4 would be biased if they were mixed in silently.
-          recalled: true,
-        });
-        // Re-read rather than incrementing a counter: a bare "1 entry added"
-        // says nothing about what went in, and leaves a mis-tap with no way
-        // back short of hunting through History.
-        await refreshSweepList();
-      };
-      wrap.append(btn);
-    }
-  }
+  // ── Morning ───────────────────────────────────────────────────────────────
 
   // Index is the stored value: 0 = no, 1 = yes, 2 = don't recall.
   //
@@ -836,70 +752,12 @@ const App = (() => {
   }
   const hourLabel = ts => new Date(ts).toLocaleTimeString([], { hour: 'numeric' });
 
-  function renderMorning() {
-    const wrap = $('morning-chips');
-    wrap.innerHTML = '';
-
-    // Already answered this morning: report it rather than re-open it. Editing
-    // it from here would invite exactly the retrospective revision the split
-    // was made to avoid — History is where a mis-tap gets deleted.
-    const answered = sweep?.answered != null;
-    // "optional" describes a question being asked. Once it has been answered
-    // there is no question here to decline.
-    $('morning-optional').hidden = answered;
-    if (answered) {
-      const said = document.createElement('p');
-      said.className = 'morning-said';
-      said.textContent = `Answered this morning: ${MORNING_LABELS[sweep.answered]}.`;
-      wrap.append(said);
-      return;
-    }
-
-    for (const value of MORNING_OPTIONS) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = MORNING_LABELS[value];
-      b.setAttribute('aria-pressed', String(sweep?.morning_wood === value));
-      b.onclick = () => {
-        // Tapping the selection clears it — the field is optional, and 0 is a
-        // real answer that must stay distinct from "didn't say".
-        sweep.morning_wood = sweep.morning_wood === value ? null : value;
-        sweep.woke_at = null;
-        sweep.woke_set = false;
-        renderMorning();
-      };
-      wrap.append(b);
-    }
-
-    // Same follow-up as the morning prompt: the reading is stamped at the wake
-    // hour, so time since the last relapse is measured from the waking and not
-    // from whenever this screen was opened. "Don't recall" is excluded from
-    // the chart, so it is not asked.
-    if (sweep?.morning_wood == null || sweep.morning_wood === 4) return;
-    const label = document.createElement('p');
-    label.className = 'morning-said';
-    label.textContent = 'Roughly when did you wake up?';
-    const row = document.createElement('div');
-    row.className = 'chips';
-    for (const ts of [...wakeHours(), null]) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = ts == null ? 'not sure' : hourLabel(ts);
-      b.setAttribute('aria-pressed', String(sweep.woke_at === ts && sweep.woke_set === true));
-      b.onclick = () => { sweep.woke_at = ts; sweep.woke_set = true; renderMorning(); };
-      row.append(b);
-    }
-    wrap.append(label, row);
-  }
-
   /**
-   * The morning prompt: how strong, and roughly when you woke.
+   * Logging the morning: how strong, and roughly when you woke.
    *
-   * It writes a `morning_check`, which deliberately does not confirm the day.
-   * It used to write `daily` — the same kind the sweep confirms with — so one
-   * tap at 08:00 marked the whole day reviewed before it had happened, and
-   * `confirmed_days` counted days nobody had looked at. A coverage number that
-   * overstates is worse than none, because it reads as trustworthy.
+   * Its own action, opened from Home whenever you like; the morning
+   * notification is only a reminder, sent if nothing is logged by then. It
+   * writes a `morning_check`, never `daily`.
    *
    * The reading is stamped at the wake-up hour, not the save. It describes the
    * waking, and "time since the last relapse" is measured from its timestamp:
@@ -908,9 +766,13 @@ const App = (() => {
    * before the erection it actually followed. The save is still on record as
    * the row's server-side created_at.
    *
-   * Chips only select and Save writes, so a wrong tap — strength or hour — is
-   * fixed by tapping again rather than by killing the app. "Don't recall" needs
-   * no hour: it is excluded from the chart, so its hour would change nothing.
+   * Chips only select and Save writes, so a wrong tap is fixed by tapping
+   * again. "Don't recall" needs no hour: it is excluded from the chart, so its
+   * hour would change nothing.
+   *
+   * One reading per morning. If today already has one it is shown selected,
+   * and saving replaces it — that is how a mistake made yesterday-you-at-7am
+   * gets fixed without a trip to History.
    */
   async function openMorning() {
     show('morning');
@@ -918,6 +780,8 @@ const App = (() => {
     const strengthWrap = $('morning-now-chips');
     const wakeWrap = $('morning-wake-chips');
     const save = $('btn-morning-save');
+    const status = $('morning-status');
+    let previous = [];
 
     const chip = (text, pressed, onclick) => {
       const b = document.createElement('button');
@@ -949,12 +813,21 @@ const App = (() => {
         }
       }
       save.disabled = pick.value == null || (needsHour && pick.woke === undefined);
+      save.textContent = previous.length ? 'Save changes' : 'Save';
     };
 
+    status.hidden = true;
     save.onclick = async () => {
       save.disabled = true;
       const ts = pick.value !== 4 ? pick.woke : null;
       await API.log({ kind: 'morning_check', morning_wood: pick.value, ...(ts ? { ts_utc: ts } : {}) });
+      // Replace, not add: written first so a failed delete leaves two readings
+      // (fixable in History) rather than none.
+      for (const ev of previous) {
+        try { await API.remove(ev.id); } catch {
+          toast('Saved. The earlier reading is still there — delete it in History.');
+        }
+      }
       $('done-text').textContent = 'Noted.';
       show('done');
       doneTimer = setTimeout(() => {
@@ -965,59 +838,25 @@ const App = (() => {
     };
 
     render();
-  }
 
-  /** Re-read today so an added or removed entry shows up in the list itself. */
-  async function refreshSweepList() {
+    // Today's reading, if there is one. Offline this is skipped: the form still
+    // works, it just cannot show or replace what was logged earlier.
     try {
-      const data = await API.sweep();
-      renderTimeline($('sweep-list'), data.events, { showDelete: true });
-      $('sweep-empty').hidden = data.events.length > 0;
-    } catch {
-      toast('Saved, but the list needs a connection to refresh.');
+      const today = stats?.today ?? (await API.stats()).today;
+      const events = await API.events({ day: today });
+      previous = events.filter(e => e.morning_wood != null)
+        .sort((a, b) => b.ts_utc - a.ts_utc);
+    } catch { previous = []; }
+    if (previous.length && screens.morning && !screens.morning.hidden && pick.value == null) {
+      const last = previous[0];
+      pick.value = last.morning_wood;
+      const hours = wakeHours();
+      pick.woke = hours.includes(last.ts_utc) ? last.ts_utc : undefined;
+      const woke = last.morning_wood === 4 ? '' : `, woke around ${hourLabel(last.ts_utc)}`;
+      status.textContent = `Logged today: ${MORNING_LABELS[last.morning_wood]}${woke}. Saving replaces it.`;
+      status.hidden = false;
+      render();
     }
-  }
-
-  async function finishSweep() {
-    const btn = $('btn-sweep-done');
-    btn.disabled = true;
-
-    const note = $('sweep-note').value.trim();
-
-    // A morning missed at the time and supplied here is still a morning
-    // reading, so it goes on its own `morning_check` rather than riding on the
-    // confirmation — one kind means one thing. Flagged `recalled` for the same
-    // reason a backfilled urge is: answered hours later, from memory, and it
-    // should not be pooled with the live ones without saying so.
-    if (sweep?.morning_wood != null) {
-      // Either screen is a memory of the morning, so with a wake hour this
-      // counts exactly like a morning-prompt answer: the timestamp is right,
-      // which is all the chart's exclusion was ever about. Only "not sure"
-      // stays `recalled` — stamped now, it would put the reading at the wrong
-      // distance from the last relapse.
-      const woke = sweep.woke_set ? sweep.woke_at : null;
-      const recalled = woke == null;
-      await API.log({
-        kind: 'morning_check', morning_wood: sweep.morning_wood, recalled,
-        ...(woke != null ? { ts_utc: woke } : {}),
-      });
-    }
-
-    // The check-in is what `confirmed_days` counts; the note rides on it rather
-    // than becoming a second event for the same moment.
-    await API.log({
-      kind: 'daily',
-      ...(note ? { note } : {}),
-    });
-
-    $('done-text').textContent = 'Day confirmed.';
-    show('done');
-    btn.disabled = false;
-    doneTimer = setTimeout(() => {
-      doneTimer = null;
-      show('home');
-      refreshProgress().catch(() => {});
-    }, CONFIG.DONE_MS);
   }
 
   // ── Deep links ────────────────────────────────────────────────────────────
@@ -1149,7 +988,9 @@ const App = (() => {
     if (!pendingAction) return;
     const action = pendingAction;
     pendingAction = null;
-    if (action === 'sweep') return openSweep();
+    // The retired evening check-in. An old notification still tapped lands on
+    // Home rather than on a screen that no longer exists.
+    if (action === 'sweep') return;
     if (action === 'morning') return openMorning();
     openLog(action);
   }
@@ -1807,7 +1648,7 @@ const App = (() => {
     $('avatar-menu').onclick = e => e.stopPropagation();
     $('range-prev').onclick = () => shiftCharts(-4);
     $('range-next').onclick = () => shiftCharts(4);
-    $('btn-open-sweep').onclick = () => openSweep();
+    $('btn-open-morning').onclick = () => openMorning();
     $('btn-talk-now').onclick = () => openShare('now');
     $('btn-talk-reflect').onclick = () => openShare('reflect');
     $('btn-share-cancel').onclick = () => show(shareMode === 'now' ? 'home' : 'progress');
@@ -1825,9 +1666,7 @@ const App = (() => {
 
     $('btn-return-clear').onclick = () => clearReturn();
     $('btn-return-relapse').onclick = () => returnRelapse();
-    $('btn-sweep-skip').onclick = () => show('home');
     $('btn-morning-skip').onclick = () => show('home');
-    $('btn-sweep-done').onclick = () => finishSweep();
 
     // A tap anywhere else is a cancel. The delete button stops propagation, so
     // this never fires for the button that is arming or committing.

@@ -151,19 +151,19 @@ const words = d => ({ ...Calc.dayWords(d) });
 
 test('a day says what it is, and a slip carries the weight', () => {
   assert.deepEqual(words({ state: 'relapse', count: 1 }),
-    { what: 'slip', emphasis: 'strong', confirmed: false });
-  assert.deepEqual(words({ state: 'relapse', count: 3, confirmed: true }),
-    { what: '3 slips', emphasis: 'strong', confirmed: true });
-  assert.deepEqual(words({ state: 'clean', count: 0, confirmed: true }),
-    { what: 'no slip', emphasis: 'plain', confirmed: true });
+    { what: 'slip', emphasis: 'strong' });
+  assert.deepEqual(words({ state: 'relapse', count: 3 }),
+    { what: '3 slips', emphasis: 'strong' });
+  assert.deepEqual(words({ state: 'clean', count: 0 }),
+    { what: 'no slip', emphasis: 'plain' });
   // Absence is de-emphasised for the same reason it is grey in the grid.
   assert.deepEqual(words({ state: 'unknown', count: 0 }),
-    { what: 'nothing logged', emphasis: 'dim', confirmed: false });
+    { what: 'nothing logged', emphasis: 'dim' });
 });
 
 test('today, touched but not over, says so rather than "nothing logged"', () => {
   assert.deepEqual(words({ state: 'unknown', count: 0, in_progress: true }),
-    { what: 'today so far, no slip', emphasis: 'dim', confirmed: false });
+    { what: 'today so far, no slip', emphasis: 'dim' });
 });
 
 // ── Notification deep links ─────────────────────────────────────────────────

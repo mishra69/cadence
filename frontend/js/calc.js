@@ -151,9 +151,6 @@ var Calc = (function () {
       // is de-emphasised for the same reason it is grey in the grid.
       emphasis: d.count > 1 || d.state === 'relapse' ? 'strong'
         : d.state === 'clean' ? 'plain' : 'dim',
-      // Whether the evening review was done. Blue no longer implies it — blue
-      // is any engagement — so it is worth saying on any day it is true.
-      confirmed: !!d.confirmed,
     };
   }
 

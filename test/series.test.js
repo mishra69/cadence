@@ -279,13 +279,11 @@ test('a day with no events is unknown, never clean', () => {
   assert.equal(day('2026-08-28').state, 'unknown', 'between the two entries: forgotten');
 });
 
-test('the review is tracked separately from the colour', () => {
-  // Blue no longer implies it, so the tooltip reports it on its own.
-  const r = dayRibbon({ events: [ev(10, 'urge'), ev(2, 'urge'), ev(1, 'daily')], tz: IST, settings: S, now: NOW, days: 14 });
-  const day = d => r.find(c => c.day === d);
-  assert.equal(day('2026-09-01').state, 'clean');
-  assert.equal(day('2026-09-01').confirmed, false);
-  assert.equal(day('2026-09-02').confirmed, true);
+test('a past check-in still counts as using the app that day', () => {
+  // The daily confirmation is retired, but the rows it left are real use.
+  const r = dayRibbon({ events: [ev(10, 'urge'), ev(1, 'daily')], tz: IST, settings: S, now: NOW, days: 14 });
+  assert.equal(r.find(c => c.day === '2026-09-02').state, 'clean');
+  assert.ok(r.every(c => !('confirmed' in c)));
 });
 
 test('an event just after the 04:00 boundary lands on the right day', () => {

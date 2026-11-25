@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  drawTarget, drawMorningTarget, isSaneHour, sendDecision, isMissed, recallBuckets,
+  drawTarget, drawMorningTarget, isSaneHour, sendDecision, isMissed,
   EARLIEST_HOUR, SANE_START_HOUR,
 } from '../worker/lib/schedule.js';
 import { derive, localParts, fromLocal, DAY_MS } from '../worker/lib/time.js';
@@ -181,43 +181,6 @@ test('a missed target is abandoned once its logical day has rolled over', () => 
   // A check-in delivered the next afternoon is worse than none.
   const tomorrow = fromLocal(IST, 2026, 6, 16, 14, 0);
   assert.equal(isMissed(row(), tomorrow, IST, S), false);
-});
-
-// ── Recall buckets ──────────────────────────────────────────────────────────
-
-test('the sweep offers only buckets that have already happened', () => {
-  const at21 = fromLocal(IST, 2026, 6, 15, 21, 0);
-  const ids = recallBuckets('2026-06-15', IST, at21).map(b => b.id);
-  // 'late' is 01:00 the following morning — still ahead at a 21:00 sweep, and
-  // offering it would invite backfilling something that hasn't happened.
-  assert.deepEqual(ids, ['morning', 'afternoon', 'evening']);
-});
-
-test('a sweep opened after midnight can still backfill late night', () => {
-  const at2am = fromLocal(IST, 2026, 6, 16, 2, 0);
-  const ids = recallBuckets('2026-06-15', IST, at2am).map(b => b.id);
-  assert.deepEqual(ids, ['morning', 'afternoon', 'evening', 'late']);
-});
-
-test('a sweep opened in the morning offers only the morning', () => {
-  const at9 = fromLocal(IST, 2026, 6, 15, 9, 0);
-  assert.deepEqual(recallBuckets('2026-06-15', IST, at9).map(b => b.id), ['morning']);
-});
-
-test('every bucket midpoint derives back to the logical day it belongs to', () => {
-  const at2am = fromLocal(IST, 2026, 6, 16, 2, 0);
-  for (const b of recallBuckets('2026-06-15', IST, at2am)) {
-    assert.equal(derive(b.ts, IST).logical_day, '2026-06-15', b.id);
-  }
-});
-
-test('bucket midpoints are never in the future, so the write path accepts them', () => {
-  for (const hour of [5, 9, 13, 18, 21, 23]) {
-    const at = fromLocal(IST, 2026, 6, 15, hour, 0);
-    for (const b of recallBuckets('2026-06-15', IST, at)) {
-      assert.ok(b.ts <= at, `${b.id} is ahead of a ${hour}:00 sweep`);
-    }
-  }
 });
 
 // ── The morning marker ──────────────────────────────────────────────────────
