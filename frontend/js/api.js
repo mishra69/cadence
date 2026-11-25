@@ -280,11 +280,6 @@ const API = (() => {
 
 
   /** Mark a notification opened, for phase 5's attribution. Never throws. */
-  /** A recent reminder the app should open as if it had been tapped. */
-  async function pendingNotification() {
-    return request('/api/notifications/pending').then(r => r.pending).catch(() => null);
-  }
-
   async function notificationOpened(id) {
     return request('/api/notifications/opened', { method: 'POST', body: { id } })
       .catch(() => ({ ok: false }));
@@ -308,7 +303,7 @@ const API = (() => {
     log, flush, events, remove, stats, settings,
     pendingEvents, pendingCount,
     pushSupport, pushSubscribe, pushUnsubscribe, pushStatus, pushTest,
-    notificationOpened, pendingNotification, seen, vouch, context, series,
+    notificationOpened, seen, vouch, context, series,
     HttpError,
   };
 })();

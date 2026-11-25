@@ -980,31 +980,6 @@ const App = (() => {
     }, ms));
   }
 
-  /**
-   * The fallback for a tap that never arrived.
-   *
-   * Every path above depends on iOS handing the tap to the page, and with
-   * Screen Time in front of the app it evidently does not: from 21 Nov every
-   * morning reminder was tapped and the app opened seconds later, on Home, with
-   * the notification never recorded as opened. So the page also asks the
-   * server: a morning reminder sent within the hour, never opened, with the
-   * morning still unlogged, is treated as the tap.
-   *
-   * Only from Home and only unlocked, so it never pulls you out of a log in
-   * progress or past the lock. Opening it records the notification as opened,
-   * which is what stops it from firing again — Cancel included.
-   */
-  async function checkMissedReminder() {
-    if (Lock.locked || pendingAction || !API.signedIn()) return;
-    const p = await API.pendingNotification();
-    if (!p || Lock.locked || pendingAction || screens.home.hidden) return;
-    if (p.id === lastReceivedId) return;
-    lastReceivedId = p.id;
-    pendingAction = p.action;
-    pendingNotificationId = p.id;
-    consumePendingAction();
-  }
-
   function consumePendingAction() {
     if (pendingNotificationId) {
       API.notificationOpened(pendingNotificationId).catch(() => {});
@@ -1646,7 +1621,6 @@ const App = (() => {
       // A shortcut lands here only after the lock has been satisfied — the
       // deep link chooses the destination, it never bypasses the gate.
       consumePendingAction();
-      checkMissedReminder().catch(() => {});
       refreshProgress().catch(() => {});
       await API.flush().catch(() => {});
       if (window.PWAInstall) PWAInstall.init({ appName: 'Cadence', sub: SUB, remember: 7 });
@@ -1845,15 +1819,6 @@ const App = (() => {
     captureAction();
 
     Lock.init({ onLock: () => showLock() });
-
-    // A resume that needs no unlock never passes through afterUnlock, so the
-    // missed-tap check runs here too. Delayed so the inbox — the path that
-    // works when iOS cooperates — gets to deliver first.
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        setTimeout(() => checkMissedReminder().catch(() => {}), 1500);
-      }
-    });
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(err => {
